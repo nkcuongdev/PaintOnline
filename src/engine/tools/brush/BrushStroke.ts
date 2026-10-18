@@ -53,7 +53,8 @@ const MIN_SAMPLE_DISTANCE = 0.35;
  * tool commit buffer bằng PaintCommand.
  *
  * Opacity của nét được áp dụng khi ghép buffer — nhờ vậy chỗ nét tự chồng lên nhau không bị đậm
- * dần (mục 5.5). Đường đi được làm mượt bằng Catmull-Rom qua mọi điểm coalesced.
+ * dần (mục 5.5). Nét cứng nối ngay mọi điểm coalesced để không trễ một mẫu; nét stamp
+ * được làm mượt bằng Catmull-Rom.
  */
 export class BrushStroke {
   readonly buffer: GrowableSurface;
@@ -100,10 +101,18 @@ export class BrushStroke {
   addPoint(x: number, y: number, pressure = 0.5): void {
     const last = this.points.at(-1);
     if (last && distance(last, { x, y }) < MIN_SAMPLE_DISTANCE) return;
-    this.points.push({ x, y, pressure });
+    const point = { x, y, pressure };
+    this.points.push(point);
     const n = this.points.length;
+    if (this.options.mode === 'line') {
+      // Không chờ điểm điều khiển phía trước: khi chuột dừng, đầu nét phải ở ngay con trỏ.
+      // Nối trực tiếp các mẫu coalesced cũng tránh spline vượt quá đường đi ở chỗ đổi hướng.
+      this.curve.length = 0;
+      this.curve.push(last ?? point, point);
+      this.drawSamples(this.curve);
+    }
     // Vẽ đoạn p[n-3] → p[n-2]; cần p[n-1] làm điểm điều khiển phía trước.
-    if (n >= 3) {
+    else if (n >= 3) {
       this.drawCurve(
         this.points[Math.max(0, n - 4)],
         this.points[n - 3],
@@ -118,7 +127,7 @@ export class BrushStroke {
   /** Vẽ đoạn cuối tới điểm cuối cùng. */
   end(): void {
     const n = this.points.length;
-    if (n >= 2) {
+    if (this.options.mode === 'stamp' && n >= 2) {
       const p3 = this.points[n - 1];
       this.drawCurve(this.points[Math.max(0, n - 3)], this.points[n - 2], p3, p3);
     }
@@ -144,7 +153,10 @@ export class BrushStroke {
         pressure: p1.pressure + (p2.pressure - p1.pressure) * t,
       });
     }
+    this.drawSamples(curve);
+  }
 
+  private drawSamples(curve: readonly StrokePoint[]): void {
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;

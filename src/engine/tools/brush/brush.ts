@@ -29,6 +29,7 @@ interface ActiveStroke {
   size: number;
   lineMode: boolean;
   last: Point;
+  pressure: number;
   /** Bộ làm mượt dây kéo (null = tắt). */
   rope: LazyRope | null;
   /** Vị trí con trỏ thật (đầu dây) để vẽ sợi dây trên overlay. */
@@ -74,9 +75,10 @@ function createBrushLikeTool(ctx: ToolContext, kind: 'brush' | 'eraser'): Tool {
   };
 
   return {
-    cursor({ active: dragging }): CursorSpec {
+    cursor(): CursorSpec {
       const radius = (currentSize() / 2) * ctx.viewport.zoom;
-      return { css: radius >= MIN_RING_RADIUS || dragging ? 'none' : 'crosshair' };
+      // Chỉ ẩn cursor khi overlay thật sự vẽ vòng cọ, kể cả trong lúc kéo.
+      return { css: radius >= MIN_RING_RADIUS ? 'none' : 'crosshair' };
     },
 
     onPointerDown(e: DocPointerEvent) {
@@ -153,6 +155,7 @@ function createBrushLikeTool(ctx: ToolContext, kind: 'brush' | 'eraser'): Tool {
           size: strokeOptions.size,
           lineMode: strokeOptions.mode === 'line',
           last: { x: e.x, y: e.y },
+          pressure: e.pressure,
           rope: ropeLength > 0 ? new LazyRope(e, ropeLength) : null,
           pointer: { x: e.x, y: e.y },
         };
@@ -170,6 +173,7 @@ function createBrushLikeTool(ctx: ToolContext, kind: 'brush' | 'eraser'): Tool {
       if (!a) return;
       try {
         for (const p of e.points) {
+          a.pressure = p.pressure;
           if (a.rope) {
             if (a.rope.pull(p)) a.stroke.addPoint(a.rope.tip.x, a.rope.tip.y, p.pressure);
           } else {
@@ -185,17 +189,25 @@ function createBrushLikeTool(ctx: ToolContext, kind: 'brush' | 'eraser'): Tool {
       a.last = a.rope ? { x: a.rope.tip.x, y: a.rope.tip.y } : { x: e.x, y: e.y };
       a.pointer = { x: e.x, y: e.y };
       predicted.length = 0;
-      // Đuôi dự đoán vô nghĩa khi làm mượt (đầu cọ đi sau con trỏ).
-      if (!a.rope) {
+      // Chuột đổi hướng đột ngột: đuôi dự đoán thò ra rồi bị xóa ở frame kế, gây giật nét.
+      // Chỉ dùng dự đoán cho bút; làm mượt dây kéo cũng không dùng vì đầu cọ đi sau con trỏ.
+      if (!a.rope && e.pointerType === 'pen') {
         for (const p of e.predicted) predicted.push({ x: p.x, y: p.y, pressure: p.pressure });
       }
       ctx.invalidateOverlay();
     },
 
-    onPointerUp() {
-      if (!active) return;
+    onPointerUp(e: DocPointerEvent) {
+      const a = active;
+      if (!a) return;
       try {
-        active.stroke.end();
+        // Pointerup có thể nằm sau pointermove cuối. Giữ áp lực cuối khi bút đã nhấc (up = 0).
+        if (a.rope) {
+          if (a.rope.pull(e)) a.stroke.addPoint(a.rope.tip.x, a.rope.tip.y, a.pressure);
+        } else {
+          a.stroke.addPoint(e.x, e.y, a.pressure);
+        }
+        a.stroke.end();
       } catch (error) {
         if (!isAllocationError(error)) throw error;
         ctx.notify('memory.refused');

@@ -5,7 +5,14 @@ import { createSurface, ScratchPool, type Ctx2D, type Surface } from '../memory/
 import type { FilterPreview, FloatingPreview, OverlayContext, StrokePreview } from '../tools/types';
 import { invert, transformRect } from '../viewport/transform';
 import type { Viewport } from '../viewport/Viewport';
-import { inflateRect, intersectRect, isEmptyRect, roundOutRect, unionRect } from '../utils/rect';
+import {
+  containsRect,
+  inflateRect,
+  intersectRect,
+  isEmptyRect,
+  roundOutRect,
+  unionRect,
+} from '../utils/rect';
 import { expandForBackdrops } from './backdrop';
 import { beautifyFrame, clipToImage, paintBeautifyFrame } from './beautify';
 import type { ObjectRenderState } from './Compositor';
@@ -320,7 +327,11 @@ export class Renderer {
     if (doc && beautify) {
       // Khung Làm đẹp: nền + bóng quanh ảnh, ảnh cắt bo góc (giống hệt ảnh xuất).
       const frame = roundOutRect(transformRect(m, beautifyFrame(doc.bounds, beautify)));
-      if (!isEmptyRect(intersectRect(clip, frame))) {
+      const radius = Math.min(beautify.radius, doc.width / 2, doc.height / 2);
+      const interior = transformRect(m, inflateRect(doc.bounds, -radius));
+      // Vùng nằm hẳn trong ảnh sẽ được phủ bởi ảnh/nền caro. Không dựng lại gradient và
+      // blur bóng của cả khung cho từng đoạn cọ nhỏ; mép bo góc vẫn vẽ đầy đủ.
+      if (!containsRect(interior, clip) && !isEmptyRect(intersectRect(clip, frame))) {
         ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
         paintBeautifyFrame(ctx, doc.bounds, beautify);
       }

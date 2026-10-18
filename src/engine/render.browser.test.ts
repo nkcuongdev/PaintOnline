@@ -74,6 +74,57 @@ const SIZE = 64;
 const MAX_DIFF = 6;
 const MEAN_DIFF = 1;
 
+describe('vẽ cọ trong khung Làm đẹp', () => {
+  it.each(['transparent', 'color'] as const)(
+    '%s: vùng bẩn trong ảnh không dựng lại gradient và bóng; khớp lần vẽ toàn màn hình',
+    (kind) => {
+      const editor = track(
+        createTestEditor(400, 240, {
+          background: kind === 'color' ? { kind, color: '#FFFFFFFF' } : { kind },
+        }),
+      );
+      editor.beautify.set({ padding: 64, background: 'sunset', radius: 12, shadow: true });
+      mountEditor(editor, 520, 360);
+      editor.viewport.set({ zoom: 1, panX: 64, panY: 64 });
+      editor.flush();
+      const ctx = editor.displayCanvas?.getContext('2d');
+      if (!ctx) throw new Error('chưa mount');
+      const gradient = vi.spyOn(ctx, 'createLinearGradient');
+      try {
+        editor.tools.setActive('brush');
+        editor.options.set('brush', { size: 8, hardness: 1, flow: 1 });
+        editor.dispatchPointer('down', { x: 80, y: 80 });
+        editor.dispatchPointer('move', { x: 100, y: 84 });
+        editor.dispatchPointer('move', { x: 120, y: 88 });
+        editor.flush();
+        gradient.mockClear();
+        editor.dispatchPointer('move', { x: 180, y: 100 });
+        const partial = readDisplay(editor, 0, 0, 520, 360);
+        expect(gradient).not.toHaveBeenCalled();
+        editor.setRenderCacheOptions({});
+        const full = readDisplay(editor, 0, 0, 520, 360);
+        expect(gradient).toHaveBeenCalled();
+        expect(compareImages(partial, full).max).toBeLessThanOrEqual(1);
+        editor.dispatchPointer('up', { x: 180, y: 100 });
+        // Mép bo góc vẫn phải vẽ lại nền/bóng, kể cả khi nét chạm ra ngoài ảnh.
+        gradient.mockClear();
+        drawStroke(editor, [
+          { x: 0, y: 0 },
+          { x: 10, y: 10 },
+        ]);
+        const corner = readDisplay(editor, 0, 0, 520, 360);
+        expect(gradient).toHaveBeenCalled();
+        editor.setRenderCacheOptions({});
+        expect(compareImages(corner, readDisplay(editor, 0, 0, 520, 360)).max).toBeLessThanOrEqual(
+          1,
+        );
+      } finally {
+        gradient.mockRestore();
+      }
+    },
+  );
+});
+
 function blendDocument(mode: BlendMode, background: DocumentBackground): Editor {
   const editor = track(createTestEditor(1, 1));
   editor.createDocument({
