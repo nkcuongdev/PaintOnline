@@ -150,6 +150,33 @@ describe('Lưu trữ IndexedDB (mục 6.4, 6.6)', () => {
     expect(await repo.getThumbnail(id)).not.toBeNull();
   });
 
+  it('đóng project: ảnh thu nhỏ cũ hơn bản lưu cuối được vẽ lại (trang chủ thấy thay đổi cuối)', async () => {
+    const repo = newRepo();
+    const editor = richEditor();
+    const autosave = autosaveFor(editor, repo);
+    await autosave.saveNow();
+    const id = editor.document?.id ?? '';
+    const first = await repo.getThumbnail(id);
+    // Lượt lưu thường ngay sau đó (trong 20 s): không vẽ lại ảnh thu nhỏ.
+    paintOnRaster(editor, [
+      { x: 20, y: 20 },
+      { x: 400, y: 300 },
+    ]);
+    await autosave.saveNow();
+    const stale = await repo.loadProject(id);
+    expect(stale.thumbnailRev).toBeLessThan(stale.document.rev);
+
+    expect(await autosave.close()).toBe(true);
+    const fresh = await repo.loadProject(id);
+    expect(fresh.thumbnailRev).toBe(fresh.document.rev);
+    const thumbnail = await repo.getThumbnail(id);
+    expect(thumbnail).not.toBeNull();
+    expect(new Uint8Array(thumbnail?.data ?? new ArrayBuffer(0))).not.toEqual(
+      new Uint8Array(first?.data ?? new ArrayBuffer(0)),
+    );
+    expect((await repo.getMeta(id))?.rev).toBe(fresh.document.rev);
+  });
+
   it('lượt lưu sau chỉ ghi layer đổi; layer bị xóa thì blob bị xóa cùng transaction', async () => {
     const repo = newRepo();
     const editor = richEditor();

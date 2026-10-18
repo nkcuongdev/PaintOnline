@@ -1,4 +1,9 @@
-import { copyProjectImage, saveLinkedFile, saveProjectToFile } from '@/app/editor/actions';
+import {
+  copyProjectImage,
+  downloadProjectImage,
+  saveLinkedFile,
+  saveProjectToFile,
+} from '@/app/editor/actions';
 import { saveCurrentProject } from '@/app/editor/session';
 import { format, t } from '@/i18n';
 import { useSettingsStore } from '@/stores/settings';
@@ -81,6 +86,15 @@ export const viewCommands: AppCommand[] = [
     label: () => t.actions.copy,
     run: ({ project }) => {
       copyProjectImage(project);
+    },
+  },
+  {
+    // "Xuất PNG" trong menu chuột phải vùng trống: tải PNG 1× đúng như đang thấy, không qua hộp thoại
+    // Export (như nút "Tải xuống" của chế độ Screenshot).
+    id: 'file.exportPng',
+    label: () => t.actions.exportPng,
+    run: ({ project }) => {
+      void downloadProjectImage(project);
     },
   },
   {

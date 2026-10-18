@@ -101,6 +101,8 @@ interface FakeRepo {
   fail: ((request: SaveRequest) => Error | null) | null;
   checkpoints: number;
   checkpointWrites: number;
+  /** Revision của các lần ghi riêng ảnh thu nhỏ (saveThumbnail). */
+  thumbnailWrites: number[];
   closed: number;
   /** Giữ lượt ghi tới khi gọi resolve (lượt lưu chậm). */
   hold: boolean;
@@ -115,6 +117,7 @@ function fakeRepo(): { fake: FakeRepo; repo: ProjectRepository } {
     fail: null,
     checkpoints: 1,
     checkpointWrites: 0,
+    thumbnailWrites: [],
     closed: 0,
     hold: false,
     release: () => undefined,
@@ -153,6 +156,10 @@ function fakeRepo(): { fake: FakeRepo; repo: ProjectRepository } {
     writeCheckpoint() {
       fake.checkpointWrites++;
       return Promise.resolve(null);
+    },
+    saveThumbnail(_projectId: ID, _image: unknown, rev: number) {
+      fake.thumbnailWrites.push(rev);
+      return Promise.resolve(true);
     },
   } as unknown as ProjectRepository;
   return { fake, repo };
@@ -409,6 +416,40 @@ describe('Autosave (mục 6.6)', () => {
     expect(await autosave.close()).toBe(true);
     expect(fake.saves.at(-1)!.durability).toBe('strict');
     expect(fake.checkpointWrites).toBe(2);
+  });
+
+  it('ảnh thu nhỏ giãn nhịp 20 s; đóng project vẽ lại ảnh thu nhỏ cũ hơn bản lưu cuối', async () => {
+    const autosave = make({ saved: { rev: 0, layers: new Map([['r1', 1]]), thumbnailRev: 0 } });
+    source.change();
+    await autosave.saveNow();
+    expect(fake.saves[0].thumbnail).not.toBeNull();
+    // Thay đổi cuối được lưu thường trong vòng 20 s: không vẽ ảnh thu nhỏ.
+    vi.setSystemTime(Date.now() + 5000);
+    source.change();
+    await autosave.saveNow();
+    expect(fake.saves[1].thumbnail).toBeNull();
+    // Đóng: không còn gì chưa lưu (bỏ qua lượt strict) nhưng vẫn ghi lại ảnh thu nhỏ của rev 2.
+    expect(await autosave.close()).toBe(true);
+    expect(fake.saves).toHaveLength(2);
+    expect(fake.thumbnailWrites).toEqual([2]);
+  });
+
+  it('đóng project: ảnh thu nhỏ đã khớp bản lưu thì không vẽ lại', async () => {
+    const autosave = make({ saved: { rev: 0, layers: new Map([['r1', 1]]), thumbnailRev: 0 } });
+    expect(await autosave.close()).toBe(true);
+    source.change();
+    // Lượt strict lúc đóng luôn kèm ảnh thu nhỏ.
+    expect(await autosave.close()).toBe(true);
+    expect(fake.saves.at(-1)!.thumbnail).not.toBeNull();
+    expect(fake.thumbnailWrites).toEqual([]);
+  });
+
+  it('mở project có ảnh thu nhỏ cũ (phiên trước đóng tab giữa chừng): đóng thì vẽ lại', async () => {
+    source.rev = 3;
+    const autosave = make({ saved: { rev: 3, layers: new Map([['r1', 1]]), thumbnailRev: 1 } });
+    expect(await autosave.close()).toBe(true);
+    expect(fake.saves).toHaveLength(0);
+    expect(fake.thumbnailWrites).toEqual([3]);
   });
 
   it('chỉ đọc: không lưu', async () => {

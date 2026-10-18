@@ -197,7 +197,7 @@ export const speedCategory: Category = {
               type: 'figure',
               shot: 'canvas-menu',
               caption:
-                '**Vùng trống:** Hoàn tác, Làm lại, Dán, Chọn tất cả, Copy ảnh, Vừa khung, 100%.',
+                '**Vùng trống:** Hoàn tác, Làm lại, Dán, Chọn tất cả, Copy ảnh, Xuất PNG, Vừa khung, 100%.',
             },
             {
               type: 'figure',

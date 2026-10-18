@@ -18,7 +18,7 @@ export function downloadBlob(blob: Blob, fileName: string): void {
   }, 0);
 }
 
-/** Tên file an toàn cho mọi hệ điều hành, giữ dấu tiếng Việt. */
+/** Tên file an toàn cho mọi hệ điều hành, giữ dấu tiếng Việt. `extension` có hay không dấu chấm. */
 export function safeFileName(name: string, extension: string): string {
   const base = name
     .normalize('NFC')
@@ -29,5 +29,5 @@ export function safeFileName(name: string, extension: string): string {
     .trim()
     .replace(/^\.+/, '')
     .slice(0, 100);
-  return `${base || 'paint-online'}.${extension}`;
+  return `${base || 'paint-online'}.${extension.replace(/^\.+/, '')}`;
 }

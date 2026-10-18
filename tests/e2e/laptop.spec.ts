@@ -259,13 +259,21 @@ test.describe('GĐ8+9 — dữ liệu', () => {
         requestPermission: () => Promise.resolve('granted'),
       };
       Object.defineProperty(window, 'showSaveFilePicker', {
-        value: () => Promise.resolve(handle),
+        value: (options: { suggestedName?: string }) => {
+          (window as unknown as { __suggested?: string }).__suggested = options.suggestedName;
+          return Promise.resolve(handle);
+        },
       });
     });
     await openEditorFromPreset(page);
     await page.getByTestId('editor-menu').click();
     await page.getByTestId('menu-save-file').click();
     await expect(page.getByTestId('toast').last()).toContainText('bai-ve.paint');
+    // Tên gợi ý trong hộp chọn file có đúng một dấu chấm trước đuôi.
+    const suggested = await page.evaluate(
+      () => (window as unknown as { __suggested?: string }).__suggested,
+    );
+    expect(suggested).toMatch(/[^.]\.paint$/);
     const writes = () =>
       page.evaluate(() => (window as unknown as { __writes: number[] }).__writes);
     await expect.poll(async () => (await writes()).length).toBe(1);

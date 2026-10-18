@@ -62,8 +62,11 @@ export interface AutosaveOptions {
   source: AutosaveSource;
   onStatus: (status: SaveStatus) => void;
   onSaved?: (result: SaveResult) => void;
-  /** Revision và contentRev từng layer đã có trong DB (mở project); không có = project mới. */
-  saved?: { rev: number; layers: ReadonlyMap<ID, number> };
+  /**
+   * Revision và contentRev từng layer đã có trong DB (mở project); không có = project mới.
+   * `thumbnailRev`: revision của ảnh thu nhỏ đang lưu (null = chưa có).
+   */
+  saved?: { rev: number; layers: ReadonlyMap<ID, number>; thumbnailRev?: number | null };
   /** Thời điểm checkpoint gần nhất (để ghi checkpoint sau mỗi 15 phút chỉnh sửa). */
   lastCheckpointAt?: number | null;
   timers?: Timers;
@@ -72,7 +75,10 @@ export interface AutosaveOptions {
   retryDelaysMs?: readonly number[];
   checkpointIntervalMs?: number;
   thumbnailSide?: number;
-  /** Ảnh thu nhỏ tạo lại tối đa mỗi khoảng này (luôn tạo khi lưu bền vững / đóng project). */
+  /**
+   * Ảnh thu nhỏ tạo lại tối đa mỗi khoảng này. Luôn tạo khi lưu bền vững; đóng project mà ảnh đang
+   * lưu cũ hơn bản lưu cuối thì vẽ lại riêng ảnh thu nhỏ.
+   */
   thumbnailIntervalMs?: number;
 }
 
@@ -114,6 +120,8 @@ export class Autosave {
   private readonly thumbnailSide: number;
   private readonly thumbnailIntervalMs: number;
   private lastThumbnailAt = Number.NEGATIVE_INFINITY;
+  /** Revision mà ảnh thu nhỏ trong DB được vẽ từ đó (null = chưa có). */
+  private thumbnailRev: number | null;
 
   constructor(private readonly options: AutosaveOptions) {
     this.timers = options.timers ?? browserTimers;
@@ -126,6 +134,7 @@ export class Autosave {
     this.savedRev = options.saved?.rev ?? -1;
     this.savedLayers = new Map(options.saved?.layers ?? []);
     this.created = options.saved !== undefined;
+    this.thumbnailRev = options.saved?.thumbnailRev ?? null;
     this.lastCheckpointAt = options.lastCheckpointAt ?? this.timers.now();
     this.status = this.isDirty ? { kind: 'dirty' } : { kind: 'saved', savedAt: null };
   }
@@ -213,9 +222,13 @@ export class Autosave {
     this.setStatus(status);
   }
 
-  /** Đóng project: lưu bền vững (strict) rồi ghi checkpoint. */
+  /**
+   * Đóng project: lưu bền vững (strict), vẽ lại ảnh thu nhỏ nếu nó cũ hơn bản lưu cuối (không còn gì
+   * để lưu thì lượt strict bỏ qua — trang chủ vẫn phải thấy đúng thay đổi cuối), rồi ghi checkpoint.
+   */
   async close(): Promise<boolean> {
     const ok = await this.saveNow('strict');
+    if (ok && this.created) await this.refreshThumbnail();
     if (ok && this.created) {
       try {
         await this.options.repo.writeCheckpoint(this.options.projectId);
@@ -304,7 +317,10 @@ export class Autosave {
         create: !this.created,
       });
       this.created = true;
-      if (thumbnail) this.lastThumbnailAt = now;
+      if (thumbnail) {
+        this.lastThumbnailAt = now;
+        this.thumbnailRev = data.rev;
+      }
       this.generation = repo.db.generation;
       this.savedRev = data.rev;
       this.savedAt = result.savedAt;
@@ -356,6 +372,24 @@ export class Autosave {
       return out;
     } catch (error) {
       throw new EncodeError(error);
+    }
+  }
+
+  /** Ghi riêng ảnh thu nhỏ của bản đã lưu khi ảnh trong DB cũ hơn. Lỗi thì giữ ảnh cũ. */
+  private async refreshThumbnail(): Promise<void> {
+    const { source, repo, projectId } = this.options;
+    if (this.disposed || this.stopped || this.isDirty) return;
+    if (this.thumbnailRev === this.savedRev) return;
+    const rev = this.savedRev;
+    try {
+      const image = await this.encodeThumbnail(source.renderThumbnail(this.thumbnailSide));
+      if (!image || source.rev !== rev) return;
+      if (await repo.saveThumbnail(projectId, image, rev)) {
+        this.thumbnailRev = rev;
+        this.lastThumbnailAt = this.timers.now();
+      }
+    } catch {
+      // Ảnh thu nhỏ không bắt buộc: đóng project vẫn tiếp tục.
     }
   }
 

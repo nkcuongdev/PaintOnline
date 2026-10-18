@@ -355,6 +355,40 @@ describe('Chọn và sửa đối tượng (tool Select)', () => {
     expect(objectsOf(editor).every((o) => o.type === 'rect' && o.stroke?.width === 12)).toBe(true);
     expect(editor.options.get('shape').strokeWidth).toBe(12);
   });
+
+  it('preset chỉ đổi đối tượng đang chọn cùng nhóm kiểu (mũi tên vừa vẽ giữ nguyên khi bấm preset khung)', () => {
+    const editor = track(createTestEditor(300, 200));
+    editor.tools.setActive('arrow');
+    editor.options.set('arrow', { strokeWidth: 6, shadow: true });
+    drag(editor, { x: 20, y: 150 }, { x: 120, y: 40 });
+    const arrowId = editor.objects.selection[0] ?? '';
+    const arrow = editor.objects.get(arrowId);
+    expect(arrow?.type).toBe('arrow');
+
+    // Đổi sang Chữ nhật, mũi tên vẫn được chọn, bấm preset của khung.
+    editor.tools.setActive('rect');
+    expect(editor.objects.selection).toEqual([arrowId]);
+    const rev = editor.document?.rev;
+    editor.objects.applyPreset(
+      'shape',
+      { strokeWidth: 4, fill: false, cornerRadius: 0, dashed: false, shadow: false },
+      { primary: '#2F9E44FF' },
+    );
+    expect(editor.objects.get(arrowId)).toEqual(arrow);
+    expect(editor.document?.rev).toBe(rev);
+    // Option của tool vẫn nhận preset cho hình vẽ sau.
+    expect(editor.options.get('shape').strokeWidth).toBe(4);
+    expect(editor.colors.primary).toBe('#2F9E44FF');
+
+    // Chọn cả khung và mũi tên: preset khung chỉ đổi khung.
+    drag(editor, { x: 160, y: 30 }, { x: 260, y: 120 });
+    const rectId = editor.objects.selection[0] ?? '';
+    editor.objects.select([rectId, arrowId]);
+    editor.objects.applyPreset('shape', { strokeWidth: 9, dashed: true }, {});
+    const rect = editor.objects.get(rectId);
+    expect(rect?.type === 'rect' && rect.stroke?.width).toBe(9);
+    expect(editor.objects.get(arrowId)).toEqual(arrow);
+  });
 });
 
 describe('Màu, cọ, layer đích', () => {

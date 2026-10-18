@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { displayPixel, drawOnCanvas, openEditorFromPreset, pasteImage } from './helpers';
 
@@ -243,6 +244,20 @@ test.describe('GĐ2 — tool, màu, menu chuột phải', () => {
     await expect(page.getByTestId('menu-edit.undo')).toBeVisible();
     await page.getByTestId('menu-edit.undo').click();
     await expect(page.getByTestId('redo')).toBeEnabled();
+  });
+
+  test('menu chuột phải vùng trống: Xuất PNG tải ảnh PNG', async ({ page }, testInfo) => {
+    await openEditorFromPreset(page);
+    await clickCanvas(page, 0.5, 0.5, { button: 'right' });
+    const item = page.getByTestId('menu-file.exportPng');
+    await expect(item).toHaveText(/Xuất PNG/);
+    const pending = page.waitForEvent('download');
+    await item.click();
+    const download = await pending;
+    expect(download.suggestedFilename()).toMatch(/[^.]\.png$/);
+    const path = testInfo.outputPath('menu.png');
+    await download.saveAs(path);
+    expect(readFileSync(path).subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   });
 
   test('cọ trên layer chú thích: hỏi chọn layer, vẽ trên layer mới', async ({ page }) => {

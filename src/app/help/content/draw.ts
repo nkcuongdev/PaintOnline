@@ -401,7 +401,7 @@ export const drawCategory: Category = {
         {
           type: 'callout',
           tone: 'warning',
-          text: 'Bấm kiểu nhanh khi đang chọn đối tượng sẽ đổi luôn đối tượng đó (kể cả khi đã đổi sang công cụ khác). Nhấn [[Escape]] trước nếu chỉ muốn đặt kiểu cho lần vẽ sau.',
+          text: 'Bấm kiểu nhanh khi đang chọn đối tượng **cùng loại** (vd. kiểu mũi tên khi đang chọn mũi tên) sẽ đổi luôn đối tượng đó; đối tượng khác loại giữ nguyên. Nhấn [[Escape]] trước nếu chỉ muốn đặt kiểu cho lần vẽ sau.',
         },
         { type: 'h2', id: 'da-giac', text: 'Vẽ đa giác' },
         {

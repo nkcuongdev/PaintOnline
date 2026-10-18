@@ -6,6 +6,7 @@ import type {
   ID,
   NoticeCode,
   ObjectSelectionSummary,
+  OptionGroupId,
   Point,
   Rect,
 } from '../../core/types';
@@ -20,7 +21,7 @@ import {
   rectCenter,
 } from '../../layers/objects/geometry';
 import { objectBounds, rendererFor } from '../../layers/objects/registry';
-import { withColor, withStyle } from '../../layers/objects/style';
+import { styleGroupOf, withColor, withStyle } from '../../layers/objects/style';
 import type { HandleId, ObjectEnv, ObjectFrame } from '../../layers/objects/types';
 import type { PendingObjects } from '../../render/Compositor';
 import { unionRect } from '../../utils/rect';
@@ -404,15 +405,18 @@ export class ObjectController {
   }
 
   /**
-   * Áp kiểu dựng sẵn (preset — GĐ7) cho đối tượng đang chọn: option + màu chính/phụ trong MỘT bước
-   * history.
+   * Áp kiểu dựng sẵn (preset — GĐ7) cho đối tượng đang chọn cùng nhóm kiểu với preset: option + màu
+   * chính/phụ trong MỘT bước history. Đối tượng khác loại (vd. mũi tên vừa vẽ còn được chọn khi
+   * bấm preset của Chữ nhật) giữ nguyên.
    */
   applyPreset(
+    group: OptionGroupId,
     patch: Readonly<Record<string, unknown>>,
     colors: { primary?: Color; secondary?: Color },
   ): boolean {
     const state = this.host.colors();
-    const next = this.selectedHits().map((hit) => {
+    const hits = this.selectedHits().filter((hit) => styleGroupOf(hit.object) === group);
+    const next = hits.map((hit) => {
       let obj = withStyle(hit.object, patch, { ...state, ...colors });
       if (colors.primary) obj = withColor(obj, 'primary', colors.primary);
       if (colors.secondary) obj = withColor(obj, 'secondary', colors.secondary);

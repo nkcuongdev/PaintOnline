@@ -49,8 +49,8 @@ export const tutorialsCategory: Category = {
         {
           type: 'callout',
           tone: 'warning',
-          title: 'Nhớ bỏ chọn trước khi đổi kiểu',
-          text: 'Đối tượng vừa vẽ vẫn được chọn. Lúc đó, chọn màu mới hoặc bấm một ô {ui:Kiểu nhanh} sẽ đổi **luôn đối tượng đang chọn** — kể cả khi bạn đã đổi sang công cụ khác. Nhấn [[Escape]] trước khi đổi kiểu cho đối tượng tiếp theo.',
+          title: 'Nhớ bỏ chọn trước khi đổi màu',
+          text: 'Đối tượng vừa vẽ vẫn được chọn. Lúc đó, chọn màu mới sẽ đổi **luôn đối tượng đang chọn** — kể cả khi bạn đã đổi sang công cụ khác. {ui:Kiểu nhanh} chỉ đổi đối tượng cùng loại, nên bấm **Khung đỏ** không làm đổi mũi tên. Nhấn [[Escape]] trước khi đổi màu cho đối tượng tiếp theo.',
         },
         { type: 'h2', id: 'che', text: '4. Che thông tin cá nhân' },
         {

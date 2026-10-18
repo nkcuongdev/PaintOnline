@@ -279,7 +279,7 @@ export const filesCategory: Category = {
         { type: 'h2', id: 'tai-xuong', text: 'Tải xuống nhanh' },
         {
           type: 'p',
-          text: 'Ở chế độ Screenshot, nút {ui:Tải xuống} lưu ngay file **PNG** đúng kích thước gốc (kèm khung Làm đẹp nếu bật), không qua hộp thoại.',
+          text: 'Ở chế độ Screenshot, nút {ui:Tải xuống} lưu ngay file **PNG** đúng kích thước gốc (kèm khung Làm đẹp nếu bật), không qua hộp thoại. Ở mọi chế độ, bấm chuột phải vào vùng trống trên khung vẽ → {ui:Xuất PNG} cũng làm như vậy.',
         },
         { type: 'h2', id: 'hop-thoai-xuat', text: 'Hộp thoại Xuất ảnh' },
         {

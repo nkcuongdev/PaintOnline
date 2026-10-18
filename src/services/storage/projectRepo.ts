@@ -97,6 +97,8 @@ export interface LoadedProject {
   document: DocumentRecord;
   /** Pixel theo layerId (chỉ layer raster có nội dung). */
   blobs: Map<ID, LayerBlobRecord>;
+  /** Revision mà ảnh thu nhỏ đang lưu được vẽ từ đó; null nếu chưa có ảnh thu nhỏ. */
+  thumbnailRev: number | null;
 }
 
 /** Dữ liệu một project đầy đủ để nhập (file .paint) hoặc sao chép. */
@@ -157,11 +159,15 @@ export class ProjectRepository {
    */
   async loadProject(projectId: ID): Promise<LoadedProject> {
     const db = await this.db.get();
-    const tx = db.transaction(['projects', 'documents', 'layerBlobs', 'checkpoints'], 'readonly');
-    const [meta, rawDocument, blobs, checkpointKey] = await Promise.all([
+    const tx = db.transaction(
+      ['projects', 'documents', 'layerBlobs', 'thumbnails', 'checkpoints'],
+      'readonly',
+    );
+    const [meta, rawDocument, blobs, thumbnail, checkpointKey] = await Promise.all([
       tx.objectStore('projects').get(projectId),
       tx.objectStore('documents').get(projectId),
       tx.objectStore('layerBlobs').getAll(projectBlobRange(projectId)),
+      tx.objectStore('thumbnails').get(projectId),
       tx.objectStore('checkpoints').getKey(projectId),
     ]);
     await tx.done;
@@ -174,7 +180,12 @@ export class ProjectRepository {
     } catch (error) {
       throw new CorruptProjectError(projectId, checkpointKey !== undefined, error);
     }
-    return { meta, document, blobs: new Map(blobs.map((b) => [b.layerId, b])) };
+    return {
+      meta,
+      document,
+      blobs: new Map(blobs.map((b) => [b.layerId, b])),
+      thumbnailRev: thumbnail?.rev ?? null,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -308,6 +319,40 @@ export class ProjectRepository {
       return image.data.byteLength;
     }
     return (await store.get(projectId))?.image.data.byteLength ?? 0;
+  }
+
+  /**
+   * Chỉ ghi lại ảnh thu nhỏ (đóng project khi ảnh đang lưu cũ hơn bản lưu cuối — autosave thường giãn
+   * nhịp vẽ ảnh thu nhỏ). Bỏ qua nếu DB đã có revision khác (tab khác vừa lưu) hoặc ảnh mới hơn.
+   * Trả true nếu đã ghi.
+   */
+  async saveThumbnail(projectId: ID, image: StoredImage, rev: number): Promise<boolean> {
+    const db = await this.db.get();
+    const tx = db.transaction(['projects', 'documents', 'thumbnails'], 'readwrite');
+    try {
+      const [meta, stored, previous] = await Promise.all([
+        tx.objectStore('projects').get(projectId),
+        tx.objectStore('documents').get(projectId),
+        tx.objectStore('thumbnails').get(projectId),
+      ]);
+      if (!meta || stored?.rev !== rev || (previous && previous.rev > rev)) {
+        await tx.done;
+        return false;
+      }
+      await tx.objectStore('thumbnails').put({ projectId, image, rev, updatedAt: this.now() });
+      const oldBytes = previous?.image.data.byteLength ?? 0;
+      await tx.objectStore('projects').put({
+        ...meta,
+        sizeBytes: Math.max(0, meta.sizeBytes - oldBytes) + image.data.byteLength,
+      });
+      await tx.done;
+      projectsChanged(projectId);
+      return true;
+    } catch (error) {
+      abortQuietly(tx);
+      await tx.done.catch(() => undefined);
+      throw error;
+    }
   }
 
   // ---------------------------------------------------------------------------

@@ -302,7 +302,7 @@ export function saveProjectToFile(project: OpenProject): void {
     openDialog({ kind: 'paintExport', projectId: project.id });
     return;
   }
-  pickPaintFile(safeFileName(project.name, '.paint'), t.fileSave.fileType).then(
+  pickPaintFile(safeFileName(project.name, 'paint'), t.fileSave.fileType).then(
     (handle) => {
       openDialog({ kind: 'paintExport', projectId: project.id, handle });
     },

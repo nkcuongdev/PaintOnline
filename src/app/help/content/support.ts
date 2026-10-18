@@ -30,8 +30,8 @@ export const supportCategory: Category = {
             },
             {
               icon: 'pointer',
-              title: 'Escape trước khi đổi kiểu',
-              text: 'Đối tượng vừa vẽ vẫn đang chọn; nhấn [[Escape]] trước khi đổi màu hay kiểu nhanh cho đối tượng tiếp theo.',
+              title: 'Escape trước khi đổi màu',
+              text: 'Đối tượng vừa vẽ vẫn đang chọn; nhấn [[Escape]] trước khi đổi màu hay kiểu nhanh cùng loại cho đối tượng tiếp theo.',
             },
             {
               icon: 'palette',
@@ -262,7 +262,7 @@ export const supportCategory: Category = {
           items: [
             [
               'Đối tượng vừa vẽ vẫn được chọn',
-              'Đổi màu hoặc bấm Kiểu nhanh lúc này sẽ đổi luôn đối tượng đó, kể cả khi đã đổi sang công cụ khác. Nhấn [[Escape]] trước.',
+              'Đổi màu lúc này sẽ đổi luôn đối tượng đó, kể cả khi đã đổi sang công cụ khác. Kiểu nhanh chỉ đổi đối tượng cùng loại (bấm kiểu khung không làm đổi mũi tên đang chọn). Nhấn [[Escape]] trước.',
             ],
             ['Escape khi gõ chữ', 'Ghi lại chữ, không hủy. Hoàn tác bằng [[Mod+Z]] nếu muốn bỏ.'],
             [
@@ -270,18 +270,10 @@ export const supportCategory: Category = {
               'File `.paint` giữ ảnh gốc dưới vùng che trừ khi chọn "Áp dụng vĩnh viễn".',
             ],
             [
-              'Ảnh thu nhỏ ở trang chủ',
-              'Có thể chưa phản ánh vài thay đổi cuối cùng nếu bạn rời project ngay sau khi app vừa tự lưu; ảnh thu nhỏ cập nhật ở lần lưu sau. Nội dung project vẫn đầy đủ.',
-            ],
-            [
               'Tùy chọn Xuất ảnh',
               'Chỉ được nhớ trong tab đang mở; tải lại trang là về mặc định (PNG, 90%, 1×).',
             ],
             ['Chọn nhiều file', 'Mở/thả nhiều file cùng lúc chỉ nhận một file.'],
-            [
-              'Tên file "Lưu ra file .paint…"',
-              'Tên gợi ý trong hộp thoại lưu có thể có hai dấu chấm trước đuôi (ví dụ `Ảnh..paint`); bạn có thể sửa tên trước khi lưu.',
-            ],
           ],
         },
       ],

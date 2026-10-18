@@ -164,7 +164,7 @@ export interface ObjectsAPI {
   applyStyle<G extends OptionGroupId>(group: G, patch: Partial<ToolOptionsMap[G]>): void;
   /**
    * Kiểu dựng sẵn (preset style — GĐ7): đặt option của nhóm + màu chính/phụ cho tool, và áp cho
-   * đối tượng đang chọn trong một bước history.
+   * đối tượng đang chọn cùng nhóm kiểu trong một bước history (đối tượng khác loại giữ nguyên).
    */
   applyPreset<G extends OptionGroupId>(
     group: G,
@@ -1766,7 +1766,7 @@ export class Editor {
         const valid = this.options.get(group) as unknown as Record<string, unknown>;
         const applied: Record<string, unknown> = {};
         for (const key of Object.keys(patch)) applied[key] = valid[key];
-        if (controller.hasSelection) controller.applyPreset(applied, colors);
+        if (controller.hasSelection) controller.applyPreset(group, applied, colors);
       },
       get: find,
       selectionBounds: () => controller.selectionBounds(),

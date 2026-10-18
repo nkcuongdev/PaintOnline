@@ -132,7 +132,7 @@ let warnedLowStorage = false;
 /** Gắn autosave, cài đặt, phiên làm việc vào project vừa mở. */
 function attach(
   project: OpenProject,
-  saved: { rev: number; layers: ReadonlyMap<ID, number> } | undefined,
+  saved: { rev: number; layers: ReadonlyMap<ID, number>; thumbnailRev: number | null } | undefined,
   lastCheckpointAt: number | null,
 ): void {
   const { editor } = project;
@@ -380,7 +380,11 @@ async function doLoad(id: ID, givenLock: ProjectLock | undefined): Promise<LoadR
     readOnly: lock === null,
   };
   current = project;
-  attach(project, { rev: record.rev, layers: savedLayers }, checkpoint?.createdAt ?? null);
+  attach(
+    project,
+    { rev: record.rev, layers: savedLayers, thumbnailRev: loaded.thumbnailRev },
+    checkpoint?.createdAt ?? null,
+  );
   emit();
 
   void repo.touchOpened(id).catch(() => undefined);
