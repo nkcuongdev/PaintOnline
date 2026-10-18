@@ -21,6 +21,7 @@
     "test:watch": "vitest --project unit --project dom",
     "test:e2e": "vite build && playwright test",
     "bench": "vite build --mode bench && playwright test -c playwright.bench.config.ts",
+    "guide:shots": "playwright test -c playwright.guide.config.ts && prettier --write src/app/help/shots.json",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test:all && npm run build",
     "prepare": "husky"
   },

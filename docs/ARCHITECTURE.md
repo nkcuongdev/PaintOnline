@@ -120,6 +120,7 @@ Editor ──documentChanged──▶ Autosave (debounce 1,5 s / tối đa 10 s;
 | `dialogs/`       | Xuất ảnh, `.paint`, Resize, Canvas size, bảng điều chỉnh, bảng phím tắt, Cài đặt                                |
 | `palette/`       | Command Palette (`cmdk`, tải lười, lọc không dấu: "lam mo" → "Làm mờ")                                          |
 | `layout/`        | Top bar, phím tắt cấp ứng dụng                                                                                  |
+| `help/`          | Trung tâm hướng dẫn `#/help` (tải lười): bài viết dạng dữ liệu trong `content/`, tìm kiếm không dấu, ảnh thật   |
 | `dev/`           | Công cụ `__paint` (chỉ có trong bản dev)                                                                        |
 
 Khác: `engine-bridge.ts` (sự kiện Engine → Zustand), `pwa.ts` (service worker, toast "Có bản mới"),

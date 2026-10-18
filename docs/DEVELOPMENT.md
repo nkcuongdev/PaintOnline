@@ -26,6 +26,7 @@ npm run dev
 | `npm run test:e2e`     | Build + Playwright E2E trên 3 engine                    |
 | `npm run check`        | Chạy toàn bộ: typecheck, lint, format, mọi test, build  |
 | `npm run bench`        | Benchmark S/M + khởi động (`HEADED=1` để dùng GPU thật) |
+| `npm run guide:shots`  | Chụp lại ảnh minh họa của trung tâm hướng dẫn           |
 
 Chỉ chạy một engine khi test browser trên máy: `VITEST_BROWSERS=chromium npm run test:browser`.
 
@@ -39,6 +40,19 @@ Chỉ có trong bản `npm run dev`, gõ trong DevTools console:
 | `__paint.replay(json)`                | Phát lại input (cả "hộp đen" lấy từ nhật ký lỗi) |
 | `__paint.memory()`                    | Xem bộ nhớ và số canvas đang sống                |
 | `__paint.editor()`                    | Lấy `Editor` để gỡ lỗi                           |
+
+## Trung tâm hướng dẫn
+
+Hướng dẫn sử dụng nằm trong app tại `#/help` (mã trong `src/app/help/`, quyết định ở
+[ADR 0030](DECISIONS.md#adr-0030)).
+
+- **Sửa hoặc thêm bài:** mỗi chủ đề là một file trong `src/app/help/content/`; bài là dữ liệu với cú
+  pháp nội dòng mô tả ở `src/app/help/types.ts`. Thêm bài = thêm một mục vào `topics` của chủ đề.
+- **Chụp lại ảnh** sau khi đổi giao diện: `npm run guide:shots` (chạy dev server riêng ở cổng 5190,
+  khoảng 3 phút). Ảnh WebP ghi vào `public/guide/shots/`, vùng các nút ghi vào
+  `src/app/help/shots.json`; chụp lại một phần: `npm run guide:shots -- -g "Paint"`.
+- **Kiểm tra:** `npm test` chạy `src/app/help/help.test.tsx` — báo lỗi nếu bài nhắc tới công cụ, lệnh,
+  liên kết, ảnh hay vùng đánh dấu không còn tồn tại.
 
 ## Benchmark
 

@@ -26,6 +26,7 @@
     "vitest.config.ts",
     "playwright.config.ts",
     "playwright.bench.config.ts",
+    "playwright.guide.config.ts",
     "tests/**/*.ts"
   ]
 }

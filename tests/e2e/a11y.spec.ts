@@ -44,6 +44,18 @@ for (const theme of ['light', 'dark'] as const) {
       await setTheme(page, theme);
     });
 
+    test('trung tâm hướng dẫn: trang chính, bài có ảnh và bảng, tìm kiếm', async ({ page }) => {
+      await page.goto('/#/help');
+      await expect(page.getByTestId('help-home')).toBeVisible();
+      await expectNoSeriousViolations(page, 'trang chính hướng dẫn');
+      await page.goto('/#/help/che-thong-tin');
+      await expect(page.getByTestId('help-topic')).toBeVisible();
+      await expectNoSeriousViolations(page, 'bài hướng dẫn');
+      await page.getByTestId('help-search').fill('layer');
+      await expect(page.getByTestId('help-search-results')).toBeVisible();
+      await expectNoSeriousViolations(page, 'kết quả tìm kiếm');
+    });
+
     test('trang chủ, Command Palette, Cài đặt, bảng phím tắt', async ({ page }) => {
       await page.goto('/');
       await waitForStartScreen(page);

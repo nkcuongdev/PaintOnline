@@ -1,5 +1,6 @@
-import { Search } from 'lucide-react';
+import { BookOpen, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { openHelp } from '@/app/help/open';
 import { Kbd } from '@/app/shared/Kbd';
 import {
   Dialog,
@@ -109,6 +110,18 @@ function ShortcutsContent() {
           })}
         </div>
       </div>
+      <button
+        type="button"
+        data-testid="shortcuts-help"
+        onClick={() => {
+          useUiStore.getState().closeDialog();
+          openHelp('phim-tat');
+        }}
+        className="flex items-center gap-1.5 self-start text-sm font-medium text-primary hover:underline dark:text-primary-soft-foreground"
+      >
+        <BookOpen className="size-4" />
+        {t.help.fullGuide}
+      </button>
     </DialogContent>
   );
 }

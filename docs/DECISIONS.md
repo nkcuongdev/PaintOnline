@@ -300,3 +300,21 @@ Thêm quyết định mới: một mục `## ADR 00xx — <tên>` ở cuối fil
   cho layer đó, nhưng trần vẫn là một layer phủ kín, đúng trường hợp ngân sách đã tính.
 - Chủ dự án chọn giữ surface liền khối ở v1.0. Tiled storage (tile 512 px, dùng lại cơ chế tile của
   history) chỉ làm khi thực tế chạm ngân sách, kèm ADR mới.
+
+<a id="adr-0030"></a>
+
+## ADR 0030 — Trung tâm hướng dẫn trong app
+
+- Hướng dẫn sử dụng là route `#/help`, `#/help/<bài>`, `#/help/<bài>/<mục>` tải lười (không vào JS
+  khởi động), dùng lại token màu, component, icon lucide, `Kbd` và theme của app; offline cùng PWA.
+- Bài viết là **dữ liệu** (`src/app/help/content/*.ts`) với cú pháp nội dòng nhỏ (`[[Mod+Z]]`,
+  `{tool:brush}`, `{cmd:edit.undo}`, `{ui:…}`, `[chữ](ma-bai#muc)`), không phải JSX: người viết chỉ sửa
+  chuỗi, tìm kiếm toàn văn đọc cùng dữ liệu. Tên công cụ, phím tắt, bảng phím tắt lấy thẳng từ registry
+  nên đổi phím trong app là hướng dẫn tự đổi theo.
+- Ảnh minh họa là giao diện thật, chụp bằng `npm run guide:shots` (Playwright thao tác trên dev
+  server), lưu WebP trong `public/guide/shots/` cùng manifest vùng phần tử
+  (`src/app/help/shots.json`); điểm đánh số trên ảnh lấy từ manifest nên chụp lại là khớp lại. Ảnh không
+  precache (giữ bản cài nhẹ), ảnh đã xem được cache cho lúc offline.
+- `help.test.tsx` kiểm tra mọi liên kết, mục, ảnh, vùng đánh dấu, công cụ, lệnh, icon được nhắc tới đều
+  tồn tại và không có ảnh thừa; render thử mọi bài.
+- Mở từ editor thì mở tab mới để không rời project; từ trang chủ, Command Palette thì chuyển trang.

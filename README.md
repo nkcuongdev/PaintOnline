@@ -118,6 +118,9 @@ Là PWA: tắt mạng vẫn mở và vẽ bình thường. Cài đặt app là t
 Mở **[paint-online-awt.pages.dev](https://paint-online-awt.pages.dev)**, dán ảnh chụp màn hình bằng
 **Ctrl+V** là bắt đầu chú thích. Không cần cài đặt hay đăng ký.
 
+Lần đầu dùng? Bấm biểu tượng **?** trên trang chủ (hoặc mở
+[`#/help`](https://paint-online-awt.pages.dev/#/help)) để xem hướng dẫn sử dụng đầy đủ có ảnh minh họa.
+
 **Trình duyệt hỗ trợ:** Chrome, Edge, Firefox (2 bản mới nhất), Safari 17+ trên máy tính. Bản v1.0
 thiết kế cho màn hình laptop từ 1024 px.
 
@@ -190,8 +193,9 @@ duyệt, app không gửi gì ra ngoài.
 
 | Tài liệu                                  | Nội dung                                                        |
 | ----------------------------------------- | --------------------------------------------------------------- |
+| Hướng dẫn sử dụng (trong app, `#/help`)   | ~45 bài có ảnh thật: công cụ, quy trình, phím tắt, xử lý sự cố  |
 | [Kiến trúc](docs/ARCHITECTURE.md)         | Các lớp, module của Engine, luồng dữ liệu, lưu trữ              |
-| [Quyết định kiến trúc](docs/DECISIONS.md) | 29 ADR: vì sao chọn cách làm hiện tại                           |
+| [Quyết định kiến trúc](docs/DECISIONS.md) | 30 ADR: vì sao chọn cách làm hiện tại                           |
 | [Phát triển](docs/DEVELOPMENT.md)         | Lệnh, test, benchmark, ngưỡng hiệu năng, checklist kiểm thử tay |
 | [Deploy](docs/DEPLOY.md)                  | Cloudflare Pages, Netlify, GitHub Pages, cập nhật phiên bản     |
 

@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   Camera,
+  CircleHelp,
   Copy,
   Download,
   Ellipsis,
@@ -28,6 +29,7 @@ import { FullscreenButton, PaletteButton } from '@/app/layout/AppButtons';
 import { TopBar } from '@/app/layout/TopBar';
 import { runCommand } from '@/commands';
 import { getGlobalCommand } from '@/commands/global';
+import { openHelp } from '@/app/help/open';
 import { navigate } from '@/app/router';
 import { AppMark } from '@/app/shared/AppLogo';
 import { IconButton } from '@/app/shared/IconButton';
@@ -513,6 +515,15 @@ function Editor({ project }: { project: OpenProject }) {
                     <Keyboard />
                     {t.shortcutsDialog.title}
                     <DropdownMenuShortcut>?</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    data-testid="menu-help"
+                    onSelect={() => {
+                      openHelp();
+                    }}
+                  >
+                    <CircleHelp />
+                    {t.help.title}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     data-testid="menu-settings"

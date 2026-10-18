@@ -1,3 +1,4 @@
+import { openHelp } from '@/app/help/open';
 import { navigate, readRoute } from '@/app/router';
 import { format, t } from '@/i18n';
 import { toggleFullscreen } from '@/services/platform/fullscreen';
@@ -40,6 +41,14 @@ export const GLOBAL_COMMANDS: readonly GlobalCommand[] = [
     shortcuts: ['?'],
     run: () => {
       openDialog({ kind: 'shortcuts' });
+    },
+  },
+  {
+    id: 'app.help',
+    label: () => t.help.title,
+    enabled: () => readRoute().name !== 'help',
+    run: () => {
+      openHelp();
     },
   },
   {

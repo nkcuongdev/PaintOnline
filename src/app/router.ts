@@ -1,17 +1,24 @@
 import { useMemo, useSyncExternalStore } from 'react';
 
 /**
- * Hash route tối giản (mục 7.9): `#/` là trang chủ, `#/project/<id>` là editor.
+ * Hash route tối giản (mục 7.9): `#/` là trang chủ, `#/project/<id>` là editor, `#/help`,
+ * `#/help/<bài>` và `#/help/<bài>/<mục>` là trung tâm hướng dẫn.
  * Reload giữ đúng project, nút Back của trình duyệt quay về trang chủ.
  */
 export type Route =
-  { name: 'home' } | { name: 'project'; projectId: string } | { name: 'not-found'; path: string };
+  | { name: 'home' }
+  | { name: 'project'; projectId: string }
+  | { name: 'help'; topic: string | null; section: string | null }
+  | { name: 'not-found'; path: string };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isProjectId(value: string): boolean {
   return UUID_PATTERN.test(value);
 }
+
+/** Mã bài/mục hướng dẫn: chữ thường không dấu, số, gạch ngang. */
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** Đổi `location.hash` thành Route. Hàm thuần, có unit test. */
 export function parseHash(hash: string): Route {
@@ -25,6 +32,16 @@ export function parseHash(hash: string): Route {
 
   const segments = path.split('/').filter((segment) => segment.length > 0);
   if (segments.length === 0) return { name: 'home' };
+
+  if (segments[0] === 'help' && segments.length <= 3) {
+    const [, topic = null, section = null] = segments;
+    if (
+      (topic === null || SLUG_PATTERN.test(topic)) &&
+      (section === null || SLUG_PATTERN.test(section))
+    ) {
+      return { name: 'help', topic, section };
+    }
+  }
 
   if (segments.length === 2) {
     const [head = '', id = ''] = segments;
@@ -41,6 +58,10 @@ export function routeToHash(route: Route): string {
       return '#/';
     case 'project':
       return `#/project/${route.projectId}`;
+    case 'help':
+      return ['#/help', route.topic, route.topic === null ? null : route.section]
+        .filter((part) => part !== null)
+        .join('/');
     case 'not-found':
       return `#/${route.path.replace(/^\/+/, '')}`;
   }

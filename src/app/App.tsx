@@ -50,6 +50,11 @@ function usePrefetchEditor(): void {
   }, []);
 }
 
+// Trung tâm hướng dẫn: tải lười, không vào JS khởi động.
+const HelpScreen = lazy(() =>
+  import('@/app/help/HelpScreen').then((module) => ({ default: module.HelpScreen })),
+);
+
 // Command Palette, bảng phím tắt, Cài đặt: tải lười khi mở lần đầu (giữ JS khởi động nhỏ — 11.2).
 const CommandPalette = lazy(() =>
   import('@/app/palette/CommandPalette').then((module) => ({ default: module.CommandPalette })),
@@ -100,9 +105,11 @@ function useDocumentTitle(route: Route): void {
   const title = inEditor
     ? `${unsaved ? '• ' : ''}${name ?? t.editor.untitled} — ${t.app.name}`
     : t.app.name;
+  // Trang hướng dẫn tự đặt tiêu đề theo bài đang đọc.
+  const help = route.name === 'help';
   useEffect(() => {
-    document.title = title;
-  }, [title]);
+    if (!help) document.title = title;
+  }, [title, help]);
 }
 
 function Screen({ route }: { route: Route }) {
@@ -113,6 +120,12 @@ function Screen({ route }: { route: Route }) {
       return (
         <Suspense fallback={<div className="h-full bg-workspace" />}>
           <EditorScreen key={route.projectId} projectId={route.projectId} />
+        </Suspense>
+      );
+    case 'help':
+      return (
+        <Suspense fallback={<div className="h-full bg-background" />}>
+          <HelpScreen topicId={route.topic} section={route.section} />
         </Suspense>
       );
     case 'not-found':

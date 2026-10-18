@@ -72,6 +72,18 @@ function pwa(mode: string) {
       // Hash route (#/project/<id>): mọi điều hướng trả về index.html đã precache.
       navigateFallback: '/index.html',
       cleanupOutdatedCaches: true,
+      // Ảnh minh họa của trung tâm hướng dẫn (WebP, ~2 MB) không precache để bản cài nhẹ; ảnh đã
+      // xem được giữ lại để đọc hướng dẫn khi mất mạng.
+      runtimeCaching: [
+        {
+          urlPattern: /\/guide\/shots\/[^/]+\.webp$/,
+          handler: 'CacheFirst',
+          options: {
+            cacheName: 'guide-shots',
+            expiration: { maxEntries: 150 },
+          },
+        },
+      ],
       // Không phát ra file source map của chính service worker.
       sourcemap: false,
     },

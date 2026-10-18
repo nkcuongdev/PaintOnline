@@ -5,7 +5,12 @@ import {
   openImageAsProject,
 } from '@/app/editor/actions';
 import { refreshProjects, watchProjects } from '@/app/projects';
-import { FullscreenButton, PaletteButton, SettingsButton } from '@/app/layout/AppButtons';
+import {
+  FullscreenButton,
+  HelpButton,
+  PaletteButton,
+  SettingsButton,
+} from '@/app/layout/AppButtons';
 import { TopBar } from '@/app/layout/TopBar';
 import { AppLogo } from '@/app/shared/AppLogo';
 import { ThemeMenu } from '@/app/shared/ThemeMenu';
@@ -66,6 +71,7 @@ export function StartScreen() {
         end={
           <>
             <FullscreenButton />
+            <HelpButton />
             <SettingsButton />
             <ThemeMenu />
           </>

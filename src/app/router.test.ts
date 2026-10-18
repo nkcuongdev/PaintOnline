@@ -25,17 +25,33 @@ describe('parseHash', () => {
     ['#/project/abc', 'id không phải UUID'],
     [`#/project/${ID}/extra`, 'thừa đoạn'],
     ['#/settings', 'route lạ'],
+    ['#/help/a/b/c', 'hướng dẫn thừa đoạn'],
+    ['#/help/Bai-Viet', 'mã bài có chữ hoa'],
     ['#/%E0%A4%A', 'percent-encoding hỏng'],
   ])('"%s" → not-found (%s)', (hash) => {
     expect(parseHash(hash).name).toBe('not-found');
   });
 });
 
+describe('route hướng dẫn', () => {
+  it.each([
+    ['#/help', null, null],
+    ['#/help/', null, null],
+    ['#/help/che-thong-tin', 'che-thong-tin', null],
+    ['#/help/che-thong-tin/kieu-che', 'che-thong-tin', 'kieu-che'],
+  ])('"%s"', (hash, topic, section) => {
+    expect(parseHash(hash)).toEqual({ name: 'help', topic, section });
+  });
+});
+
 describe('routeToHash', () => {
-  it.each<Route>([{ name: 'home' }, { name: 'project', projectId: ID }])(
-    'round-trip %o',
-    (route) => {
-      expect(parseHash(routeToHash(route))).toEqual(route);
-    },
-  );
+  it.each<Route>([
+    { name: 'home' },
+    { name: 'project', projectId: ID },
+    { name: 'help', topic: null, section: null },
+    { name: 'help', topic: 'lop', section: null },
+    { name: 'help', topic: 'lop', section: 'che-do-hoa-tron' },
+  ])('round-trip %o', (route) => {
+    expect(parseHash(routeToHash(route))).toEqual(route);
+  });
 });

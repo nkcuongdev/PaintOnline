@@ -1,4 +1,5 @@
-import { Maximize, Minimize, Search, Settings } from 'lucide-react';
+import { CircleHelp, Maximize, Minimize, Search, Settings } from 'lucide-react';
+import { openHelp } from '@/app/help/open';
 import { IconButton } from '@/app/shared/IconButton';
 import { Kbd } from '@/app/shared/Kbd';
 import { getGlobalCommand } from '@/commands/global';
@@ -50,6 +51,20 @@ export function FullscreenButton() {
       aria-pressed={fullscreen}
       onClick={() => {
         getGlobalCommand('view.fullscreen')?.run();
+      }}
+    />
+  );
+}
+
+/** Nút mở trung tâm hướng dẫn (trang chủ). */
+export function HelpButton() {
+  return (
+    <IconButton
+      label={t.help.open}
+      icon={<CircleHelp />}
+      data-testid="help-button"
+      onClick={() => {
+        openHelp();
       }}
     />
   );
