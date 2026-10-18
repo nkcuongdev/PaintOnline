@@ -1,0 +1,40 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dev-dist
+*.tsbuildinfo
+
+# Tests
+coverage
+playwright-report
+test-results
+blob-report
+.vitest-attachments
+.vitest
+__screenshots__
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Cloudflare
+.wrangler
+
+# Benchmark
+dist-bench
+tests/bench/results

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="vi" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="Paint Online — vẽ, chỉnh ảnh và chú thích ảnh chụp màn hình ngay trong trình duyệt. Không tài khoản, ảnh không rời khỏi máy."
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f7f7f9" />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" type="image/svg+xml" href="/favicon-light.svg" />
+    <script src="/theme-init.js"></script>
+    <title>Paint Online</title>
+    <style>
+      /* Chỉ hiện khi app không khởi động được sau vài giây (vd. mở trực tiếp file index.html).
+         React thay toàn bộ nội dung #root khi mount nên bình thường không bao giờ thấy. */
+      .boot-fallback {
+        display: grid;
+        place-items: center;
+        height: 100vh;
+        margin: 0;
+        padding: 24px;
+        font:
+          14px/1.5 system-ui,
+          sans-serif;
+        text-align: center;
+        color: #5f5f6b;
+        opacity: 0;
+        animation: boot-fallback-in 0.2s ease-out 4s forwards;
+      }
+      @keyframes boot-fallback-in {
+        to {
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <p class="boot-fallback">
+        Không khởi động được Paint Online. Hãy mở ứng dụng qua máy chủ web (npm run dev, npm run
+        preview hoặc bản đã deploy) — không mở trực tiếp file index.html.
+      </p>
+    </div>
+    <noscript>Paint Online cần JavaScript để chạy.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

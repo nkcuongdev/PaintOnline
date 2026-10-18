@@ -1,0 +1,11 @@
+dist
+dev-dist
+coverage
+playwright-report
+test-results
+node_modules
+package-lock.json
+public/fonts
+dist-bench
+tests/bench/results
+.vitest

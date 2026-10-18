@@ -1,0 +1,17 @@
+# Chuỗi cung ứng (mục 10.2): cập nhật phụ thuộc định kỳ, gom nhóm để dễ review.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-tooling:
+        dependency-type: development
+      runtime:
+        dependency-type: production
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

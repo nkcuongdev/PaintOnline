@@ -1,0 +1,288 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/*
+ * Design tokens — mục 7.1 của Implementation Plan.
+ * Toàn bộ màu, bán kính, bóng là biến CSS; Light/Dark đổi bằng class `dark` trên <html>.
+ * Tên biến theo quy ước shadcn/ui để component sinh ra dùng được ngay.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+
+  /* Nền vỏ ứng dụng & chữ */
+  --background: #f7f7f9;
+  --foreground: #18181b;
+
+  /* Bề mặt nổi: thẻ, menu, popover */
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+
+  /* Màu nhấn cobalt: tool đang chọn, nút chính, focus ring */
+  --primary: #3b5bdb;
+  --primary-foreground: #ffffff;
+  --primary-soft: #e8edfc;
+  --primary-soft-foreground: #2f4ab8;
+
+  --secondary: #f0f0f3;
+  --secondary-foreground: #27272a;
+  --muted: #f0f0f3;
+  --muted-foreground: #5f5f6b;
+  --accent: #ececf0;
+  --accent-foreground: #18181b;
+
+  --destructive: #d92d20;
+  --destructive-foreground: #ffffff;
+  --success: #12805c;
+  --warning: #b54708;
+
+  --border: #e2e2e8;
+  --input: #d9d9e0;
+  --ring: #3b5bdb;
+
+  /* Vùng quanh canvas: xám trung tính để không làm sai cảm nhận màu ảnh */
+  --workspace: #ececef;
+  --workspace-foreground: #6b6b76;
+  --checker-light: #ffffff;
+  --checker-dark: #e3e3e8;
+
+  /* Bề mặt "kính" cho top bar, tool island, panel nổi */
+  --glass: rgb(255 255 255 / 0.78);
+  --glass-border: rgb(24 24 27 / 0.08);
+
+  --shadow-color: 228 12% 30%;
+  --shadow-island:
+    0 1px 2px hsl(var(--shadow-color) / 0.08), 0 4px 12px -2px hsl(var(--shadow-color) / 0.12),
+    0 12px 32px -8px hsl(var(--shadow-color) / 0.14);
+  --shadow-card:
+    0 1px 2px hsl(var(--shadow-color) / 0.06), 0 2px 8px -2px hsl(var(--shadow-color) / 0.08);
+  --shadow-card-hover:
+    0 2px 4px hsl(var(--shadow-color) / 0.08), 0 12px 28px -8px hsl(var(--shadow-color) / 0.2);
+
+  --radius: 0.625rem;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: #1b1b1e;
+  --foreground: #ececf1;
+
+  --card: #232327;
+  --card-foreground: #ececf1;
+  --popover: #26262b;
+  --popover-foreground: #ececf1;
+
+  --primary: #4263eb;
+  --primary-foreground: #ffffff;
+  --primary-soft: #26304f;
+  --primary-soft-foreground: #a9bbff;
+
+  --secondary: #2c2c31;
+  --secondary-foreground: #e4e4ea;
+  --muted: #2a2a2f;
+  --muted-foreground: #a3a3ae;
+  --accent: #303036;
+  --accent-foreground: #f4f4f7;
+
+  --destructive: #f04438;
+  --destructive-foreground: #ffffff;
+  --success: #32d583;
+  --warning: #fdb022;
+
+  --border: #34343a;
+  --input: #3d3d44;
+  --ring: #7491ff;
+
+  --workspace: #2a2a2e;
+  --workspace-foreground: #8e8e99;
+  --checker-light: #3a3a40;
+  --checker-dark: #313136;
+
+  --glass: rgb(38 38 43 / 0.78);
+  --glass-border: rgb(255 255 255 / 0.07);
+
+  --shadow-color: 240 10% 2%;
+  --shadow-island:
+    0 1px 2px hsl(var(--shadow-color) / 0.4), 0 4px 12px -2px hsl(var(--shadow-color) / 0.45),
+    0 12px 32px -8px hsl(var(--shadow-color) / 0.5);
+  --shadow-card:
+    0 1px 2px hsl(var(--shadow-color) / 0.35), 0 2px 8px -2px hsl(var(--shadow-color) / 0.35);
+  --shadow-card-hover:
+    0 2px 4px hsl(var(--shadow-color) / 0.4), 0 12px 28px -8px hsl(var(--shadow-color) / 0.6);
+}
+
+@theme inline {
+  --font-sans:
+    'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* 13 px cho UI, 12 px cho thanh trạng thái (mục 7.1) */
+  --text-ui: 0.8125rem;
+  --text-ui--line-height: 1.25rem;
+  --text-status: 0.75rem;
+  --text-status--line-height: 1rem;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-foreground: var(--primary-soft-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-workspace: var(--workspace);
+  --color-workspace-foreground: var(--workspace-foreground);
+  --color-glass: var(--glass);
+  --color-glass-border: var(--glass-border);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --shadow-island: var(--shadow-island);
+  --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
+
+  /* Chuyển động 120–200 ms (mục 7.1) */
+  --default-transition-duration: 150ms;
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  html {
+    /* Khung nhìn động: thanh địa chỉ trên di động không che toolbar (mục 7.9) */
+    height: 100dvh;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-ui text-foreground antialiased;
+    font-family: var(--font-sans);
+    font-feature-settings:
+      'cv11' 1,
+      'ss01' 1;
+    /* Chặn vuốt Back/Forward và hiệu ứng kéo giãn của trang (mục 7.9) */
+    overscroll-behavior: none;
+    overflow: hidden;
+  }
+
+  #root {
+    isolation: isolate;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 28%, transparent);
+  }
+}
+
+@layer utilities {
+  /* Bề mặt kính mờ cho top bar, tool island, panel nổi */
+  .surface-glass {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    -webkit-backdrop-filter: saturate(1.6) blur(16px);
+    backdrop-filter: saturate(1.6) blur(16px);
+  }
+
+  /* Nền ô caro cho vùng trong suốt */
+  .bg-checker {
+    background-color: var(--checker-light);
+    background-image:
+      linear-gradient(45deg, var(--checker-dark) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--checker-dark) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--checker-dark) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--checker-dark) 75%);
+    background-size: 16px 16px;
+    background-position:
+      0 0,
+      0 8px,
+      8px -8px,
+      -8px 0;
+  }
+}
+
+/* Bộ chọn màu (react-colorful): rộng theo popover, bo góc theo design token. */
+.color-picker .react-colorful {
+  width: 100%;
+  height: 168px;
+}
+.color-picker .react-colorful__saturation {
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.color-picker .react-colorful__last-control {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+.color-picker .react-colorful__pointer {
+  width: 20px;
+  height: 20px;
+}
+
+/* Ô gõ chữ chú thích chồng lên canvas (mục 5.10): trong suốt, không viền, không kéo giãn. */
+.text-edit-overlay {
+  position: absolute;
+  margin: 0;
+  border: 0;
+  outline: 1px dashed rgb(59 91 219 / 0.85);
+  outline-offset: 0;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  box-sizing: content-box;
+  transform-origin: 50% 50%;
+  white-space: pre;
+  caret-color: currentColor;
+}
+.text-edit-overlay[data-wrap='true'] {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* Tắt chuyển động khi người dùng yêu cầu (mục 7.1) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

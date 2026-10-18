@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paint Online — Benchmark</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #ececef;
+        font:
+          13px system-ui,
+          sans-serif;
+      }
+      #host {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 1280px;
+        height: 720px;
+      }
+      #log {
+        position: fixed;
+        right: 8px;
+        bottom: 8px;
+        max-width: 520px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="host"></div>
+    <pre id="log"></pre>
+    <script type="module" src="./bench.ts"></script>
+  </body>
+</html>
