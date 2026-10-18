@@ -7,6 +7,9 @@
 **Vẽ, chỉnh ảnh và chú thích ảnh chụp màn hình ngay trong trình duyệt.**<br />
 Không tài khoản · Không máy chủ · Ảnh không bao giờ rời khỏi máy bạn.
 
+**[🌐 Dùng thử Paint Online](https://paint-online-awt.pages.dev)**
+
+[![CI](https://github.com/nkcuongdev/PaintOnline/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nkcuongdev/PaintOnline/actions/workflows/ci.yml?query=branch%3Amain)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
@@ -94,7 +97,7 @@ Không tài khoản · Không máy chủ · Ảnh không bao giờ rời khỏi 
 
 ## Bắt đầu
 
-Cần **Node.js 22 hoặc 24** và npm 10+.
+Để chạy hoặc phát triển dự án trên máy, cần **Node.js 22 hoặc 24** và npm 10+.
 
 ```bash
 npm install
@@ -113,6 +116,11 @@ npm run preview
 
 Toàn bộ app là trang tĩnh trong `dist/`, deploy được lên Cloudflare Pages, Netlify hay bất kỳ host
 tĩnh nào. Xem [hướng dẫn deploy](docs/DEPLOY.md).
+
+Website hiện được triển khai trên **Cloudflare Pages**. Mỗi lần push hoặc merge vào `main`,
+GitHub Actions tự chạy kiểm tra, build và deploy khi các kiểm tra bắt buộc đạt. Các bộ test trình
+duyệt chạy song song trên Chromium, Firefox và WebKit. Theo dõi tiến trình tại
+[GitHub Actions](https://github.com/nkcuongdev/PaintOnline/actions/workflows/ci.yml?query=branch%3Amain).
 
 **Trình duyệt hỗ trợ:** Chrome, Edge, Firefox (2 bản mới nhất), Safari 17+ trên máy tính. Bản v1.0
 thiết kế cho màn hình laptop từ 1024 px.
@@ -161,8 +169,10 @@ duyệt, app không gửi gì ra ngoài.
 - **React 19 + Zustand + Tailwind CSS 4 + shadcn/ui** cho giao diện; IndexedDB qua `idb`.
 - **Vitest** (unit, component, browser mode) và **Playwright** E2E trên Chromium, Firefox, WebKit.
 
-Đạt mọi ngưỡng hiệu năng trên laptop 2 nhân: vẽ ảnh 4K × 5 layer ở 60 fps, undo 5 ms, JS khởi động
-~170 KB gzip.
+Trong đợt đo v1.0 ngày 18/10/2026 trên Dell Vostro 5568 (Core i7-7500U, RAM 7,9 GB), kịch bản
+Chromium với ảnh 4K × 5 layer đạt frame p95 khoảng 17,4 ms, undo 5 ms; JS khởi động khoảng 170 KB
+gzip. Đây là số liệu trên cấu hình thử nghiệm; hiệu năng thực tế phụ thuộc thiết bị, trình duyệt
+và độ phức tạp của ảnh. Xem [kết quả benchmark và giới hạn đã biết](docs/DEVELOPMENT.md#benchmark).
 
 ## Tài liệu
 
