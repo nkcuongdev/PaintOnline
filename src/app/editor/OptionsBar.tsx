@@ -511,7 +511,7 @@ export function OptionsBar({ editor }: { editor: Editor }) {
             }
           : undefined
       }
-      className="surface-glass pointer-events-auto flex h-10 max-w-full shrink-0 [scrollbar-width:none] items-center gap-3.5 overflow-x-auto rounded-xl px-3.5 whitespace-nowrap shadow-island xl:gap-4 [&::-webkit-scrollbar]:hidden"
+      className="surface-glass pointer-events-auto flex min-h-10 max-w-full shrink-0 flex-wrap items-center justify-center gap-x-3.5 gap-y-1 rounded-xl px-3.5 py-1 whitespace-nowrap shadow-island xl:gap-x-4"
     >
       {content}
     </div>

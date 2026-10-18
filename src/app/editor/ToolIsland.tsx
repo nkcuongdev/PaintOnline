@@ -246,7 +246,7 @@ export function ToolIsland({ editor, compact = false }: { editor: Editor; compac
       aria-label={t.editor.toolsLabel}
       data-testid="tool-island"
       data-compact={compact ? 'true' : undefined}
-      className="surface-glass pointer-events-auto flex h-[52px] max-w-full shrink-0 [scrollbar-width:none] items-center gap-0.5 overflow-x-auto rounded-xl px-1.5 shadow-island [&::-webkit-scrollbar]:hidden"
+      className="surface-glass pointer-events-auto flex min-h-[52px] max-w-full shrink-0 flex-wrap items-center justify-center gap-x-0.5 gap-y-1 rounded-xl px-1.5 py-1 shadow-island"
     >
       {groups.map((tools, gi) => (
         <Fragment key={tools[0]?.id ?? gi}>
