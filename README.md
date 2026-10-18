@@ -7,7 +7,7 @@
 **Vẽ, chỉnh ảnh và chú thích ảnh chụp màn hình ngay trong trình duyệt.**<br />
 Không tài khoản · Không máy chủ · Ảnh không bao giờ rời khỏi máy bạn.
 
-**[🌐 Dùng thử Paint Online](https://paint-online-awt.pages.dev)**
+<a href="https://paint-online-awt.pages.dev"><img src="https://img.shields.io/badge/D%C3%B9ng_th%E1%BB%AD_ngay-paint--online--awt.pages.dev-3B63E0?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Dùng thử Paint Online" height="36" /></a>
 
 [![CI](https://github.com/nkcuongdev/PaintOnline/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nkcuongdev/PaintOnline/actions/workflows/ci.yml?query=branch%3Amain)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white)
@@ -24,12 +24,28 @@ Không tài khoản · Không máy chủ · Ảnh không bao giờ rời khỏi 
 
 ## Vì sao là Paint Online
 
-|                       |                                                                                     |
-| --------------------- | ----------------------------------------------------------------------------------- |
-| 🔒 **Riêng tư**       | Mọi xử lý diễn ra trong trình duyệt. Không backend, không analytics, không gửi ảnh. |
-| ⚡ **Mở tab là dùng** | Dán ảnh chụp màn hình bằng Ctrl+V, chú thích xong rồi bấm Copy trong vài giây.      |
-| 💾 **Không mất bài**  | Tự động lưu vào IndexedDB, khôi phục sau khi đóng tab hay trình duyệt bị treo.      |
-| ✈️ **Dùng offline**   | Là PWA: tắt mạng vẫn mở và vẽ bình thường. Cài đặt app là tùy chọn.                 |
+<table>
+<tr>
+<td width="50%" valign="top">
+<h3>🔒 Riêng tư</h3>
+Mọi xử lý diễn ra trong trình duyệt. Không backend, không analytics, không gửi ảnh.
+</td>
+<td width="50%" valign="top">
+<h3>⚡ Mở tab là dùng</h3>
+Dán ảnh chụp màn hình bằng Ctrl+V, chú thích xong rồi bấm Copy trong vài giây.
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h3>💾 Không mất bài</h3>
+Tự động lưu vào IndexedDB, khôi phục sau khi đóng tab hay trình duyệt bị treo.
+</td>
+<td width="50%" valign="top">
+<h3>✈️ Dùng offline</h3>
+Là PWA: tắt mạng vẫn mở và vẽ bình thường. Cài đặt app là tùy chọn.
+</td>
+</tr>
+</table>
 
 ## Tính năng
 
@@ -97,33 +113,29 @@ Không tài khoản · Không máy chủ · Ảnh không bao giờ rời khỏi 
 
 ## Bắt đầu
 
-Để chạy hoặc phát triển dự án trên máy, cần **Node.js 22 hoặc 24** và npm 10+.
+### Dùng ngay
+
+Mở **[paint-online-awt.pages.dev](https://paint-online-awt.pages.dev)**, dán ảnh chụp màn hình bằng
+**Ctrl+V** là bắt đầu chú thích. Không cần cài đặt hay đăng ký.
+
+**Trình duyệt hỗ trợ:** Chrome, Edge, Firefox (2 bản mới nhất), Safari 17+ trên máy tính. Bản v1.0
+thiết kế cho màn hình laptop từ 1024 px.
+
+### Chạy trên máy
+
+Cần **Node.js 22 hoặc 24** và npm 10+.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Mở địa chỉ Vite in ra (mặc định `http://localhost:5173`), rồi dán một ảnh chụp màn hình bằng
-**Ctrl+V**.
+Mở `http://localhost:5173`. Build bản production bằng `npm run build`, xem thử bằng
+`npm run preview`.
 
-Build bản production:
-
-```bash
-npm run build
-npm run preview
-```
-
-Toàn bộ app là trang tĩnh trong `dist/`, deploy được lên Cloudflare Pages, Netlify hay bất kỳ host
-tĩnh nào. Xem [hướng dẫn deploy](docs/DEPLOY.md).
-
-Website hiện được triển khai trên **Cloudflare Pages**. Mỗi lần push hoặc merge vào `main`,
-GitHub Actions tự chạy kiểm tra, build và deploy khi các kiểm tra bắt buộc đạt. Các bộ test trình
-duyệt chạy song song trên Chromium, Firefox và WebKit. Theo dõi tiến trình tại
-[GitHub Actions](https://github.com/nkcuongdev/PaintOnline/actions/workflows/ci.yml?query=branch%3Amain).
-
-**Trình duyệt hỗ trợ:** Chrome, Edge, Firefox (2 bản mới nhất), Safari 17+ trên máy tính. Bản v1.0
-thiết kế cho màn hình laptop từ 1024 px.
+Bản build là trang tĩnh trong `dist/`, deploy được lên host tĩnh bất kỳ. Bản chính thức tự deploy lên
+Cloudflare Pages qua GitHub Actions mỗi khi `main` thay đổi và test đạt trên Chromium, Firefox,
+WebKit. Xem [hướng dẫn deploy](docs/DEPLOY.md).
 
 ## Phím tắt
 
@@ -169,10 +181,10 @@ duyệt, app không gửi gì ra ngoài.
 - **React 19 + Zustand + Tailwind CSS 4 + shadcn/ui** cho giao diện; IndexedDB qua `idb`.
 - **Vitest** (unit, component, browser mode) và **Playwright** E2E trên Chromium, Firefox, WebKit.
 
-Trong đợt đo v1.0 ngày 18/10/2026 trên Dell Vostro 5568 (Core i7-7500U, RAM 7,9 GB), kịch bản
-Chromium với ảnh 4K × 5 layer đạt frame p95 khoảng 17,4 ms, undo 5 ms; JS khởi động khoảng 170 KB
-gzip. Đây là số liệu trên cấu hình thử nghiệm; hiệu năng thực tế phụ thuộc thiết bị, trình duyệt
-và độ phức tạp của ảnh. Xem [kết quả benchmark và giới hạn đã biết](docs/DEVELOPMENT.md#benchmark).
+> [!TIP]
+> Trên laptop Core i7-7500U (Chromium), ảnh 4K × 5 layer vẽ ở frame p95 ≈ 17 ms, undo 5 ms; JS khởi
+> động ≈ 170 KB gzip. Số liệu tham khảo, phụ thuộc thiết bị.
+> [Chi tiết benchmark và giới hạn đã biết](docs/DEVELOPMENT.md#benchmark).
 
 ## Tài liệu
 
