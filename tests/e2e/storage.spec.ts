@@ -316,9 +316,10 @@ test.describe('GĐ3 — an toàn dữ liệu (fault-injection, mục 11.1)', () 
     await waitSaved(page);
     // Ảnh dán mở ở chế độ Screenshot (tool island rút gọn — GĐ7): chọn Cọ bằng phím B.
     await page.keyboard.press('b');
+    // Vẽ ở nửa dưới khung: tool island + Options bar (có thể xuống 2 dòng) phủ phần trên canvas.
     await drawOnCanvas(page, [
-      [0.2, 0.2],
-      [0.8, 0.8],
+      [0.3, 0.5],
+      [0.7, 0.85],
     ]);
     await page.keyboard.press('ControlOrMeta+s');
     await expect(page.getByTestId('save-status')).toHaveAttribute('data-status', 'saving');
