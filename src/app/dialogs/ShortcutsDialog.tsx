@@ -81,12 +81,13 @@ function ShortcutsContent() {
                   {items.map((row) => (
                     <div
                       key={row.label}
-                      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm"
+                      className="flex items-start justify-between gap-3 text-sm"
                       data-testid="shortcut-row"
                     >
-                      {/* Không đủ chỗ thì cụm phím xuống dòng (căn phải) thay vì tràn sang cột bên cạnh. */}
+                      {/* Nhãn dài thì xuống dòng; cụm phím giữ ở hàng đầu và không quá 60% cột nên
+                          không tràn sang cột bên cạnh. */}
                       <dt className="min-w-0">{row.label}</dt>
-                      <dd className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
+                      <dd className="flex max-w-[60%] shrink-0 flex-wrap items-center justify-end gap-1">
                         {row.keys.map((key, index) => (
                           <span key={key} className="flex items-center gap-1">
                             {/* Dấu `/` gọn hơn chữ "dự phòng"; mô tả hộp thoại giải thích nó. */}

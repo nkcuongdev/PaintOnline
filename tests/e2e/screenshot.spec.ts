@@ -6,7 +6,7 @@ import { drawOnCanvas, pasteImage } from './helpers';
  * E2E GĐ7 (mục 9): Screenshot Editor hoàn chỉnh — chế độ Screenshot với giao diện rút gọn, Redact
  * khảm/làm mờ, Step badge, Spotlight, kiểu nhanh, panel Làm đẹp, Copy + Tải xuống nổi bật.
  * Nghiệm thu "luồng screenshot đầy đủ dưới 15 giây": tự động đo 5 lần trên mỗi trình duyệt (người
- * dùng tự đo thêm trên trình duyệt hằng ngày — docs/perf-baseline.md).
+ * dùng tự đo thêm trên trình duyệt hằng ngày — docs/DEVELOPMENT.md).
  */
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';

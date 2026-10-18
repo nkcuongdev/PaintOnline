@@ -12,7 +12,7 @@ import {
  *
  * Lựa chọn của người dùng được nhân bản vào localStorage để `public/theme-init.js`
  * áp dụng đồng bộ trước khi trang vẽ lần đầu (IndexedDB là bất đồng bộ nên sẽ gây
- * nháy màu). Xem docs/adr/0015-theme-bootstrap.md.
+ * nháy màu). Xem docs/DECISIONS.md, ADR 0015.
  */
 
 /** Phải trùng với khóa trong public/theme-init.js. */

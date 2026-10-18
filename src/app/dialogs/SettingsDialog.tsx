@@ -37,8 +37,12 @@ function themeLabel(preference: ThemePreference): string {
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="grid gap-3 border-t pt-4 first:border-t-0 first:pt-0">
-      <h3 className="text-sm font-semibold">{title}</h3>
+    // flex-col thay vì grid: cột grid lấy min-content của con làm bề rộng tối thiểu, nên một dòng
+    // `truncate` dài (nhật ký lỗi) đẩy cả dialog phải cuộn ngang.
+    <section className="flex flex-col gap-4 border-t pt-5 first:border-t-0 first:pt-0">
+      <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+        {title}
+      </h3>
       {children}
     </section>
   );
@@ -56,14 +60,14 @@ function Row({
   htmlFor?: string;
 }) {
   return (
-    <div className="grid gap-1.5">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <label htmlFor={htmlFor} className="text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+      <div className="flex min-w-0 flex-1 basis-56 flex-col gap-1">
+        <label htmlFor={htmlFor} className="text-sm font-medium">
           {label}
         </label>
-        {children}
+        {hint && <p className="text-xs leading-relaxed text-muted-foreground">{hint}</p>}
       </div>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      <div className="shrink-0">{children}</div>
     </div>
   );
 }
@@ -109,14 +113,14 @@ function SettingsContent() {
   return (
     <DialogContent
       closeLabel={t.actions.close}
-      className="flex max-h-[min(44rem,90vh)] flex-col gap-4 sm:max-w-xl"
+      className="flex max-h-[min(44rem,90vh)] flex-col gap-4 sm:max-w-2xl"
       data-testid="settings-dialog"
     >
       <DialogHeader>
         <DialogTitle>{t.settings.title}</DialogTitle>
         <DialogDescription>{t.settings.description}</DialogDescription>
       </DialogHeader>
-      <div className="-mx-6 grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 pb-1">
+      <div className="-mx-6 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-6 pb-1">
         <Section title={t.settings.appearance}>
           <Row label={t.settings.theme}>
             <Segmented
@@ -267,7 +271,7 @@ function ErrorLogSection() {
           <p className="text-sm" data-testid="error-log-count">
             {format(t.settings.errorLogCount, { count: entries.length })}
           </p>
-          <ul className="grid gap-1 rounded-lg border bg-muted/40 p-2 text-xs">
+          <ul className="flex flex-col gap-1 rounded-lg border bg-muted/40 p-2 text-xs">
             {recent.map((entry) => (
               <li key={`${String(entry.at)}-${entry.message}`} className="flex gap-2">
                 <span className="shrink-0 text-muted-foreground tabular-nums">

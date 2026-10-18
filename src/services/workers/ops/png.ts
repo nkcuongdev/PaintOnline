@@ -57,7 +57,7 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
 
 /**
  * Lọc dòng PNG: Paeth cho mọi dòng (dòng đầu: Sub). Bộ lọc cố định thay cho heuristic chọn theo
- * từng dòng — nhanh gấp 2–3 lần mà kích thước gần như không đổi (đo ở GĐ3, docs/perf-baseline.md).
+ * từng dòng — nhanh gấp 2–3 lần mà kích thước gần như không đổi (đo ở GĐ3).
  * Vòng nóng: đánh chỉ số trực tiếp, không cấp phát theo dòng (mục 11.3).
  */
 export function filterRows(

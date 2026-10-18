@@ -480,7 +480,7 @@ export class Renderer {
 
   /**
    * Luôn dùng `low` (song tuyến) cho màn hình: trên Chromium, `medium`/`high` dựng mipmap cho CẢ
-   * texture nguồn mỗi lần vẽ — đo ở GĐ1: > 250 ms/frame với layer 4K (docs/perf-baseline.md).
+   * texture nguồn mỗi lần vẽ — đo ở GĐ1: > 250 ms/frame với layer 4K (ADR 0017).
    * Thu nhỏ đẹp ở zoom thấp dùng mipmap ½, ¼ do Engine tự quản (GĐ4, mục 5.2).
    */
   private applySmoothing(ctx: Ctx2D): void {

@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 /**
  * Chạy bộ benchmark trên bản build (mode bench) và kiểm tra ngưỡng BẮT BUỘC của mục 11.2 cho kịch
  * bản S và M. Kết quả ghi vào tests/bench/results/<trình duyệt>.json để cập nhật
- * docs/perf-baseline.md. Chạy bằng `npm run bench`.
+ * docs/DEVELOPMENT.md. Chạy bằng `npm run bench`.
  */
 
 interface ScenarioResult {

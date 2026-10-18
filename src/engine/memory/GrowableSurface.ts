@@ -125,7 +125,7 @@ export class GrowableSurface implements Archivable {
   /**
    * Đọc pixel một vùng nguyên (tile history). Đọc thẳng vùng con trên context của layer: trên
    * Chromium có GPU, vẽ qua scratch `willReadFrequently` buộc đọc ngược cả texture và chậm hơn
-   * ~7 lần (đo ở GĐ1, docs/perf-baseline.md). Trả null nếu vùng chưa có dữ liệu (trong suốt).
+   * ~7 lần (đo ở GĐ1). Trả null nếu vùng chưa có dữ liệu (trong suốt).
    */
   read(rect: Readonly<Rect>): ImageData | null {
     const src = this.region(rect);

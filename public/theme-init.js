@@ -1,4 +1,4 @@
-// Áp dụng theme trước lần vẽ đầu tiên để tránh nháy màu (docs/adr/0015-theme-bootstrap.md).
+// Áp dụng theme trước lần vẽ đầu tiên để tránh nháy màu (docs/DECISIONS.md, ADR 0015).
 // File tĩnh, chạy đồng bộ trong <head>; không inline để tuân thủ CSP `script-src 'self'`.
 // Logic phải khớp với src/app/theme.ts.
 (function () {

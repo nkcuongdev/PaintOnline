@@ -167,7 +167,7 @@ function drawRaster(
   const bounds = layer.bounds;
   if (!surface || !bounds) return;
   // Chỉ vẽ phần nguồn ứng với vùng cần vẽ: GPU không phải xử lý cả texture của layer mỗi frame
-  // (đo ở docs/perf-baseline.md, GĐ1). Nới 2 px để nội suy ở mép không tạo đường nối.
+  // (đo ở GĐ1). Nới 2 px để nội suy ở mép không tạo đường nối.
   const r = roundOutRect(intersectRect(inflateRect(region, 2), bounds));
   if (isEmptyRect(r)) return;
   const part = options.rasterSource?.(layer, r);
