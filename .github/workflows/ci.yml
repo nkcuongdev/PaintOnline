@@ -1,5 +1,5 @@
 # CI (mục 9 GĐ0, 11.1, 13.3): typecheck, lint, unit test, build, Playwright smoke;
-# tự deploy bản preview lên Cloudflare Pages khi đã cấu hình secrets.
+# tự deploy main lên production, các pull request lên preview khi đã cấu hình secrets.
 name: CI
 
 on:
@@ -95,8 +95,8 @@ jobs:
           path: tests/bench/results
           retention-days: 30
 
-  deploy-preview:
-    name: Deploy preview (Cloudflare Pages)
+  deploy:
+    name: Deploy Cloudflare Pages
     runs-on: ubuntu-latest
     needs: [quality, browser]
     # Bỏ qua khi chưa cấu hình secrets (fork, repo mới) thay vì làm đỏ CI.
@@ -123,4 +123,4 @@ jobs:
           command: pages deploy dist --project-name=${{ env.CLOUDFLARE_PROJECT }} --branch=${{ github.head_ref || github.ref_name }}
       - name: Chưa cấu hình Cloudflare
         if: ${{ env.CLOUDFLARE_API_TOKEN == '' }}
-        run: echo "::notice::Bỏ qua deploy preview — thêm secrets CLOUDFLARE_API_TOKEN và CLOUDFLARE_ACCOUNT_ID để bật."
+        run: echo "::notice::Bỏ qua deploy — thêm secrets CLOUDFLARE_API_TOKEN và CLOUDFLARE_ACCOUNT_ID để bật."

@@ -23,8 +23,28 @@ Paint Online là trang web tĩnh: sau `npm run build`, toàn bộ app nằm tron
    ```
 
 3. CI có sẵn (`.github/workflows/ci.yml`): khi repo có secrets `CLOUDFLARE_API_TOKEN` và
-   `CLOUDFLARE_ACCOUNT_ID`, mỗi lần push chạy typecheck, lint, test, build, E2E smoke rồi deploy bản
-   preview. Tên project mặc định `paint-online`, đổi bằng biến repo `CLOUDFLARE_PAGES_PROJECT`.
+   `CLOUDFLARE_ACCOUNT_ID`, mỗi lần push lên `main` chạy typecheck, lint, test, build, E2E smoke rồi
+   deploy production. Pull request trong cùng repo được deploy preview sau khi kiểm tra đạt.
+   Tên project mặc định `paint-online`, đổi bằng biến repo `CLOUDFLARE_PAGES_PROJECT`.
+
+### Tự cập nhật từ GitHub
+
+Project hiện tại là Direct Upload, cập nhật qua GitHub Actions:
+
+- Website: https://paint-online-awt.pages.dev
+- Cloudflare Pages project: `paint-online`, production branch: `main`.
+- Repo: https://github.com/nkcuongdev/PaintOnline
+- Repo **Settings → Secrets and variables → Actions**: thêm `CLOUDFLARE_ACCOUNT_ID` và
+  `CLOUDFLARE_API_TOKEN`.
+- Tạo API token Cloudflare với quyền **Account → Cloudflare Pages → Edit**, giới hạn trong tài khoản
+  chứa project. Chỉ lưu token trong GitHub Actions secrets, không commit vào repo.
+
+Sau khi cấu hình, push hoặc merge vào `main` sẽ cập nhật website tại cùng địa chỉ khi các bước kiểm
+tra đạt. Có thể chạy thủ công workflow **CI** trong tab **Actions**, chọn nhánh `main`.
+Nếu kiểm tra hoặc deploy thất bại, bản website đã deploy trước đó vẫn được giữ nguyên.
+
+Với project Direct Upload, đổi production branch bằng Cloudflare API **Update project**; cần đồng bộ
+với nhánh `main` trong workflow để cập nhật website chính thay vì tạo preview.
 
 Cloudflare Pages đọc `_headers` trực tiếp.
 
