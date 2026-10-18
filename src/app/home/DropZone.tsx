@@ -76,7 +76,7 @@ export function DropZone({ busy, onFile }: DropZoneProps) {
       </h2>
       <p className="relative mt-2 max-w-md text-[0.875rem] text-muted-foreground">
         {before}
-        <Kbd shortcut="Mod+V" className="mx-1 align-[-0.2em]" />
+        <Kbd shortcut="Mod+V" className="mx-1 align-middle" />
         {after}
       </p>
 
