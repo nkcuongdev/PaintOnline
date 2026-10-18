@@ -297,16 +297,22 @@ export class History {
   // Nén dữ liệu cũ (mục 5.6, 5.11 bước 4)
   // ---------------------------------------------------------------------------
 
-  /** Dữ liệu tiếp theo cần nén: bước cũ trước; bước gần đây chỉ nén phần "rời document". */
-  private nextArchivable(): Archivable | null {
+  /** Dữ liệu được phép nén ở trạng thái history hiện tại, không gồm nhánh redo. */
+  private archiveCandidates(): Archivable[] {
+    const candidates: Archivable[] = [];
     const oldCount = this.undoStack.length - this.rawSteps;
     for (let i = 0; i < this.undoStack.length; i++) {
-      const items = this.undoStack[i]?.archivables?.(i < oldCount) ?? [];
-      for (const item of items) {
-        if (!item.archived && !this.unarchivable.has(item)) return item;
-      }
+      candidates.push(...(this.undoStack[i]?.archivables?.(i < oldCount) ?? []));
     }
-    return null;
+    return candidates;
+  }
+
+  /** Dữ liệu tiếp theo cần nén: bước cũ trước; bước gần đây chỉ nén phần "rời document". */
+  private nextArchivable(): Archivable | null {
+    return (
+      this.archiveCandidates().find((item) => !item.archived && !this.unarchivable.has(item)) ??
+      null
+    );
   }
 
   private scheduleArchive(urgent: boolean): void {
@@ -346,10 +352,15 @@ export class History {
           if (this.compressor !== compressor) return;
           if (y + height < snap.height) await this.pause();
         }
-        adopted = item.adopt({ width: snap.width, height: snap.height, bands }, snap.version);
+        // Worker có thể trả kết quả sau undo: surface đã quay lại document thì không được
+        // thay bằng bản nén (adopt giải phóng canvas mà thao tác ảnh đang đọc).
+        if (this.archiveCandidates().includes(item)) {
+          adopted = item.adopt({ width: snap.width, height: snap.height, bands }, snap.version);
+        }
       }
       if (adopted) this.account();
-      else this.unarchivable.add(item);
+      // Bị undo không có nghĩa là không nén được: redo sau đó vẫn phải được thử lại.
+      else if (this.archiveCandidates().includes(item)) this.unarchivable.add(item);
     } catch {
       // Worker lỗi hoặc dữ liệu đã bị giải phóng: giữ nguyên dạng GPU.
       this.unarchivable.add(item);

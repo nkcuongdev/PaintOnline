@@ -3,6 +3,7 @@ import type { Document } from '../core/Document';
 import { MemoryBudget } from '../memory/MemoryBudget';
 import { History } from './History';
 import type { Archivable, CompressedPixels } from './archive';
+import { loadInflater } from './archive';
 import type { Command } from './types';
 
 function fakeDoc(): Document {
@@ -198,6 +199,44 @@ describe('History', () => {
     );
     expect(items.map((i) => i.archived)).toEqual([true, true, true, false, false]);
     history.dispose();
+  });
+
+  it('undo trong lúc nén: không giải phóng surface đã quay lại document; redo vẫn nén được', async () => {
+    await loadInflater();
+    vi.useFakeTimers();
+    const history = new History(budget());
+    try {
+      const doc = fakeDoc();
+      const item = new FakeArchive();
+      const adopt = vi.spyOn(item, 'adopt');
+      const command = counterCommand({ value: 0 }, 1);
+      command.archivables = () => [item];
+      let complete!: (bytes: Uint8Array) => void;
+      const pending = new Promise<Uint8Array>((resolve) => {
+        complete = resolve;
+      });
+      const compress = vi.fn((bitmap: ImageBitmap) => {
+        bitmap.close();
+        return pending;
+      });
+      history.setCompressor(compress);
+      history.execute(command, doc);
+      await vi.advanceTimersByTimeAsync(300);
+      expect(compress).toHaveBeenCalledOnce();
+
+      history.undo(doc);
+      complete(new Uint8Array([1, 2, 3]));
+      await vi.advanceTimersByTimeAsync(300);
+      expect(adopt).not.toHaveBeenCalled();
+      expect(item.archived).toBe(false);
+
+      history.redo(doc);
+      await vi.advanceTimersByTimeAsync(300);
+      expect(item.archived).toBe(true);
+    } finally {
+      history.dispose();
+      vi.useRealTimers();
+    }
   });
 });
 

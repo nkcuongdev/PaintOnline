@@ -115,9 +115,11 @@ describe('vẽ cọ trong khung Làm đẹp', () => {
         const corner = readDisplay(editor, 0, 0, 520, 360);
         expect(gradient).toHaveBeenCalled();
         editor.setRenderCacheOptions({});
-        expect(compareImages(corner, readDisplay(editor, 0, 0, 520, 360)).max).toBeLessThanOrEqual(
-          1,
-        );
+        const cornerDiff = compareImages(corner, readDisplay(editor, 0, 0, 520, 360));
+        // WebKit/Linux có thể lượng tử hóa mép clip bo góc lệch 2/255 giữa vùng bẩn và
+        // lần vẽ toàn màn hình. Giới hạn cả sai số cực đại lẫn trung bình để bắt lệch ảnh.
+        expect(cornerDiff.max).toBeLessThanOrEqual(2);
+        expect(cornerDiff.mean).toBeLessThan(0.01);
       } finally {
         gradient.mockRestore();
       }
