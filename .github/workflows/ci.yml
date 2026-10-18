@@ -44,10 +44,14 @@ jobs:
           retention-days: 7
 
   browser:
-    name: Browser test · E2E smoke (Chromium, Firefox, WebKit)
+    name: Browser test · E2E (${{ matrix.browser }})
     runs-on: ubuntu-latest
     needs: quality
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -56,19 +60,21 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Cài trình duyệt Playwright
-        run: npx playwright install --with-deps chromium firefox webkit
+        run: npx playwright install --with-deps ${{ matrix.browser }}
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
       - name: Vitest browser mode (canvas thật)
         run: npm run test:browser
-      - name: Playwright E2E smoke
-        run: npx playwright test
+        env:
+          VITEST_BROWSERS: ${{ matrix.browser }}
+      - name: Playwright E2E
+        run: npx playwright test --project=${{ matrix.browser }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.browser }}
           path: playwright-report
           retention-days: 7
 

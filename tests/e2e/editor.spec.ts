@@ -75,7 +75,9 @@ test.describe('GĐ1 — luồng dán → vẽ → copy', () => {
       Object.defineProperty(event, 'clipboardData', { value: dt });
       document.dispatchEvent(event);
     });
-    await expect(page.getByTestId('toast')).toHaveText(/Clipboard không có ảnh/);
+    await expect(
+      page.getByTestId('toast').filter({ hasText: /Clipboard không có ảnh/ }),
+    ).toBeVisible();
     await expect(page.getByTestId('start-screen')).toBeVisible();
   });
 });
@@ -103,7 +105,9 @@ test.describe('GĐ1 — mở ảnh an toàn', () => {
       mimeType: 'image/png',
       buffer: Buffer.from('<html><script>alert(1)</script></html>'),
     });
-    await expect(page.getByTestId('toast')).toHaveText(/Định dạng không được hỗ trợ/);
+    await expect(
+      page.getByTestId('toast').filter({ hasText: /Định dạng không được hỗ trợ/ }),
+    ).toBeVisible();
     await expect(page.getByTestId('start-screen')).toBeVisible();
   });
 });
@@ -187,7 +191,7 @@ test.describe('GĐ1 — vẽ, tẩy, undo/redo, khung nhìn', () => {
     expect(await page.evaluate(() => window.visualViewport?.scale ?? 1)).toBe(1);
   });
 
-  test('xuất PNG tải file đúng tên', async ({ page }) => {
+  test('xuất PNG tải file đúng tên', async ({ page, browserName }) => {
     await openEditorFromPreset(page);
     await page.getByTestId('export-image').click();
     await expect(page.getByTestId('export-dialog')).toBeVisible();
@@ -195,6 +199,11 @@ test.describe('GĐ1 — vẽ, tẩy, undo/redo, khung nhìn', () => {
     const download = page.waitForEvent('download');
     await page.getByTestId('export-download').click();
     const file = await download;
-    expect(file.suggestedFilename()).toBe('Ảnh mới 1080 × 1080.png');
+    // WebKit trên Linux thay dấu cách bằng dấu gạch dưới trong tên file tải xuống.
+    const expectedName =
+      browserName === 'webkit' && process.platform === 'linux'
+        ? 'Ảnh_mới_1080_×_1080.png'
+        : 'Ảnh mới 1080 × 1080.png';
+    expect(file.suggestedFilename()).toBe(expectedName);
   });
 });

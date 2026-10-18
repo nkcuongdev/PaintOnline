@@ -41,6 +41,7 @@ Project hiện tại là Direct Upload, cập nhật qua GitHub Actions:
 
 Sau khi cấu hình, push hoặc merge vào `main` sẽ cập nhật website tại cùng địa chỉ khi các bước kiểm
 tra đạt. Có thể chạy thủ công workflow **CI** trong tab **Actions**, chọn nhánh `main`.
+Các bộ test trình duyệt chạy song song trên Chromium, Firefox và WebKit; cả ba phải đạt trước khi deploy.
 Nếu kiểm tra hoặc deploy thất bại, bản website đã deploy trước đó vẫn được giữ nguyên.
 
 Với project Direct Upload, đổi production branch bằng Cloudflare API **Update project**; cần đồng bộ

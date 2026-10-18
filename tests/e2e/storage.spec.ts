@@ -120,6 +120,8 @@ test.describe('GĐ3 — autosave và mở lại', () => {
 
 test.describe('GĐ3 — trang chủ quản lý project', () => {
   test('lưới project: đổi tên, nhân bản, thùng rác, khôi phục, xóa vĩnh viễn', async ({ page }) => {
+    // Luồng dài gồm nhiều lần lưu và mở dialog; WebKit trên runner CI có thể vượt 30 giây.
+    test.slow();
     await openEditorFromPreset(page);
     await waitSaved(page);
     await page.getByTestId('back-to-home').click();
@@ -240,7 +242,9 @@ test.describe('GĐ3 — file .paint và xuất ảnh', () => {
       mimeType: 'application/zip',
       buffer: Buffer.from('không phải zip'),
     });
-    await expect(page.getByTestId('toast')).toHaveText(/không phải file \.paint/);
+    await expect(
+      page.getByTestId('toast').filter({ hasText: /không phải file \.paint/ }),
+    ).toBeVisible();
   });
 
   test('xuất JPG và WebP với chất lượng, tỉ lệ', async ({ page }, testInfo) => {
