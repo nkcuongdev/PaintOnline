@@ -207,13 +207,18 @@ test.describe('GĐ2 — tool, màu, menu chuột phải', () => {
     await page.locator('#hex-input').press('Enter');
     await expect(page.getByTestId('color-control')).toHaveAttribute('aria-label', /#E8590C/);
     await page.keyboard.press('Escape');
+    // Popup có animation đóng: đợi tháo focus scope trước khi dùng phím tắt canvas.
+    await expect(page.getByTestId('color-popover')).toBeHidden();
+    await page.getByTestId('workspace').focus();
 
     await page.keyboard.press('g');
+    await expectTool(page, 'bucket');
     await clickCanvas(page, 0.5, 0.6);
     await expect
       .poll(async () => (await displayPixel(page, 0.5, 0.6)).slice(0, 3), { timeout: 10_000 })
       .toEqual([232, 89, 12]);
     await expect(page.getByTestId('undo')).toBeEnabled();
+    await page.getByTestId('workspace').focus();
     await page.keyboard.press(`${MOD}+z`);
     await expect.poll(async () => displayPixel(page, 0.5, 0.6)).toEqual([255, 255, 255, 255]);
   });

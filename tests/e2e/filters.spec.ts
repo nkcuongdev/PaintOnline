@@ -30,8 +30,11 @@ async function drawBar(page: Page): Promise<void> {
 }
 
 async function openAdjustment(page: Page, id: string): Promise<void> {
+  // Chờ menu lần trước đóng hết (kể cả animation/focus scope) trước khi mở lại.
+  await expect(page.getByTestId('adjust-menu-content')).toBeHidden();
   await page.getByTestId('adjust-menu').click();
   await page.getByTestId(`menu-filter.${id}`).click();
+  await expect(page.getByTestId('adjust-menu-content')).toBeHidden();
 }
 
 /** Nhập giá trị tham số đầu tiên của bước `filter` (vd. `brightness`, `blur`). */
