@@ -1,7 +1,7 @@
 {
   "name": "paint-online",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Paint Online — web app vẽ và chú thích ảnh chạy hoàn toàn trong trình duyệt",
   "type": "module",
   "engines": {

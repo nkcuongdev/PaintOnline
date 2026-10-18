@@ -38,3 +38,6 @@ Thumbs.db
 # Benchmark
 dist-bench
 tests/bench/results
+
+# Claude Code (local)
+.claude/
