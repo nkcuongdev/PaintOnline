@@ -10,3 +10,11 @@
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# Service worker và manifest (PWA — ADR 0011): luôn kiểm tra bản mới.
+/sw.js
+  Cache-Control: no-cache
+
+/manifest.webmanifest
+  Cache-Control: no-cache
+  Content-Type: application/manifest+json

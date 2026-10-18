@@ -446,3 +446,88 @@ Không hồi quy: vùng bẩn chỉ mở rộng khi có Redact khảm/làm mờ 
 
 **JS khởi động 234,2 KB gzip** (GĐ6: 227,3 KB; ≤ 250 KB). Chunk editor tải lười 61,9 KB gzip. Còn
 ~16 KB cho GĐ8.
+
+## GĐ8+9 gộp — v1.0 cho trình duyệt laptop (2026-10-18)
+
+**Thiết bị D1** (máy dùng hằng ngày của chủ dự án): Dell Vostro 5568, Intel Core i7-7500U (2 nhân /
+4 luồng), RAM 7,9 GB, Intel HD 620 + NVIDIA 940MX, Windows 10 · Chromium 156.0.8078.4, Firefox 157.0,
+`HEADED=1` (GPU thật). Máy D2 riêng và T1 (iPad) không có — T1 đã bị cắt theo ADR 0028; XL (8192²,
+cần RAM ≥ 16 GB) không chạy được trên máy 8 GB này. Mọi số dưới đây đo khi không chạy việc nặng khác
+song song: lượt đo đầu (song song với typecheck) cho số sai lệch tới 2–10 lần và đã bị bỏ.
+
+### Ngưỡng bắt buộc — S, M (`HEADED=1 npm run bench -- bench.spec`)
+
+| Kịch bản · trình duyệt | Frame p95 / max | Độ trễ p95 | Undo  | Paint Bucket (khung dài nhất) | Lưu thường | Lưu đầy đủ  | Mở project |
+| ---------------------- | --------------- | ---------- | ----- | ----------------------------- | ---------- | ----------- | ---------- |
+| S · Chromium           | 16,8 / 18,5 ms  | 14,9 ms    | 4 ms  | 157 ms (50 ms)                | 165 ms     | 220 ms      | 100 ms     |
+| M · Chromium           | 16,8 / 17,4 ms  | 14,7 ms    | 5 ms  | 353 ms (100 ms)               | 747 ms     | 4 353 ms ⚠️ | 1 330 ms   |
+| S · Firefox            | 16,7 / 16,7 ms  | 17 ms      | 32 ms | 192 ms (33 ms)                | 129 ms     | 149 ms      | 103 ms     |
+| M · Firefox            | 16,7 / 83 ms    | 19 ms      | 54 ms | 555 ms (117 ms)               | 412 ms     | 1 662 ms    | 1 291 ms   |
+
+**Đạt mọi ngưỡng bắt buộc.** Long task khi lưu (Chromium) 0 ms. Lưu đầy đủ M trên Chromium là ngoại
+lệ ADR 0022: 4,35 s ở lượt chốt, dao động 5,5–9,0 s giữa các lần chạy (CPU 2 nhân bão hòa khi 3
+Worker mã hóa song song) — xem ADR 0022 mục GĐ9. Firefox M: 3 lần đo thêm cho khung dài nhất
+117–150 ms, độ trễ p95 21–44 ms (ADR 0018 đã hết ảnh hưởng nghiệm thu).
+
+**Khởi động app** (production): Chromium lần đầu 501 ms, lần sau 293 ms; Firefox lần đầu 693 ms, lần
+sau 347 ms — đạt (lần sau ≤ 1,5 s; lần đầu ≤ 2 s). **JS khởi động 170,7 KB gzip** (GĐ7: 234,2 KB;
+≤ 250 KB): Canvas Engine thành chunk riêng tải lười (67,1 KB gzip, tải trước lúc rảnh), editor
+58,5 KB, Command Palette 6,0 KB, Cài đặt 2,2 KB. Service worker precache 62 file (2,4 MB, gồm WASM).
+
+### Hai lần tối ưu có số đo
+
+| #   | Triệu chứng                            | Nguyên nhân                                                                     | Sửa                                                           | Kết quả                                                      |
+| --- | -------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------ |
+| 1   | Mở project M Chromium 3,26 s (> 3 s)   | Đọc 1 pixel sau khi mở mất 1,65 s: ghép vào canvas CPU nên đọc ngược cả texture | `readPixels` ghép trên canvas GPU, chỉ đọc ngược vùng cần đọc | Đọc 1 px: 266 → 3 ms; mở M 3,26 → 1,33 s                     |
+| 2   | Mở project M Firefox 3,5–3,7 s (> 3 s) | Giải mã 5 layer 4K 3,3 s: `unfilter` rẽ nhánh theo từng byte                    | Vòng riêng cho từng bộ lọc PNG                                | Giải mã 3,3 → 1,2 s; mở M 1,29 s (Chromium cũng 1,5 → 1,2 s) |
+
+Phát hiện nhờ benchmark có thêm chi tiết từng bước khi mở project (`[bench] mở project: đọc DB …,
+giải mã …, dựng document …, khung đầu …`). GĐ7 chỉ đo `quick=1` (bỏ lưu/mở) nên hồi quy này không bị
+thấy sớm hơn.
+
+### Kịch bản L (`BENCH_CUSTOM=6000x4000x10`) — ngưỡng bắt buộc: frame p95 ≤ 50 ms trên D1
+
+| Trình duyệt | Frame p95 / max | Độ trễ p95 | Undo   | Paint Bucket | Lưu thường | Lưu đầy đủ | Mở project | Bộ nhớ   |
+| ----------- | --------------- | ---------- | ------ | ------------ | ---------- | ---------- | ---------- | -------- |
+| Chromium    | 16,8 / 20,6 ms  | 15,5 ms    | 23 ms  | 898 ms       | 1,6 s      | 14,1 s     | 15,3 s     | 1 142 MB |
+| Firefox     | 16,7 / 100 ms   | 18 ms      | 105 ms | 1 736 ms     | 1,2 s      | 7,0 s      | 5,7 s      | 1 164 MB |
+
+**Đạt** (frame p95 16,8 ms). Lưu/mở/Paint Bucket không có ngưỡng bắt buộc cho L (mục 11.2 chỉ áp cho
+M); ghi lại là giới hạn của máy 8 GB / 2 nhân với 10 layer 24 MP (240 MP dữ liệu).
+
+### Quyết định 10.4 kiểm lại
+
+- **Below/Above cache, mipmap** (`BENCH_LAYERS=1`): Chromium mọi kịch bản frame p95 16,8 ms; cache
+  giảm pan p95 M × 5 từ 35 → 18 ms, M × 20 từ 48 → 17 ms. Firefox: tắt cache thì M × 20 frame p95
+  817 ms; tắt mipmap thì L p95 ~600 ms. **Giữ cache và mipmap.**
+- **Tiled storage**: đo lãng phí khi nội dung rải thưa trên L — 0,8× (chú thích tập trung) tới 27×
+  (2 nét ở hai góc), trần là một layer phủ kín. **Đề xuất giữ surface liền khối ở v1.0**, tiled
+  storage cho v1.x nếu cần — [ADR 0029](./adr/0029-tiled-storage-v1x.md), chờ chủ dự án quyết định.
+- **Áp lực bộ nhớ** (`STRESS=1`): 57 canvas 4K tới 1,8 GB trên cả hai trình duyệt, từ chối an toàn,
+  không crash tab.
+
+### Xem trước bộ lọc (M, `filters.spec`) và biến đổi ảnh (L, `docops.spec`)
+
+- Chromium: mọi bộ lọc p95 ≤ 67 ms. Firefox: mọi bộ lọc p95 ≤ 86 ms (GĐ6: Hue 105, Sharpen 106 ms —
+  **đã đạt**), trừ lần mở bảng đầu tiên khi ảnh đang thu nhỏ: 264 ms (đọc pixel nguồn lần đầu từ GPU).
+- Biến đổi ảnh L: mọi thao tác hoàn thành, trong lúc xử lý khung dài nhất ≤ 167 ms (Chromium ≤ 17 ms).
+  Khung vẽ lại đầu tiên trên Firefox 112–939 ms (cache/mipmap dựng lại — giới hạn đã biết từ GĐ5).
+  Undo Canvas size trên Firefox từng bị "hết bộ nhớ layer" khi layer cũ đã được nén lúc rảnh — đã sửa
+  (ADR 0028 mục 18), có test hồi quy; 14 lần chạy lại sau khi sửa đều undo được (636–711 ms).
+- **Còn treo (Firefox, L)**: khoảng 3/30 lần chạy, "Canvas +10%" bị từ chối `image.failed` (thao tác
+  hủy an toàn, ảnh giữ nguyên) — không tái hiện được trong 22 lần chạy sau khi thêm ghi chi tiết lỗi;
+  lần sau xảy ra, nhật ký lỗi (Cài đặt) và console của bench sẽ có nguyên nhân. Khung dài nhất khi xoay
+  90° trên Firefox 133–240 ms (mốc 200 ms của bench thỉnh thoảng bị vượt, GĐ5: 100 ms).
+
+### Luồng screenshot (nghiệm thu GĐ7, đo lại sau khi engine tải lười)
+
+Tự động 5 lần, cả bộ E2E chạy song song 2 worker: Chromium 2,5–3,2 s, Firefox 5,2–7,9 s, WebKit
+5,4–6,4 s (≤ 15 s). Bảng tự đo của chủ dự án ở mục GĐ7 vẫn cần điền.
+
+### Accessibility, offline
+
+- axe (`tests/e2e/a11y.spec.ts`): **0 lỗi serious/critical** ở trang chủ, editor Paint và Screenshot,
+  menu Xem, mini toolbar, Command Palette, Cài đặt, bảng phím tắt, hộp thoại Xuất — 2 theme × 3 engine.
+- Offline (`tests/e2e/offline.spec.ts`): tắt mạng rồi reload — mở lại project, vẽ, Ctrl+S, về trang
+  chủ, tạo ảnh mới, mở Command Palette — đạt trên Chromium và Firefox. Safari kiểm tay
+  ([manual-testing.md](./manual-testing.md)).

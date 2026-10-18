@@ -27,6 +27,11 @@ export interface AppCommand {
   release?: (ctx: CommandContext) => void;
   /** Cho phép chạy lặp khi giữ phím (nudge, zoom). */
   repeat?: boolean;
+  /**
+   * `false`: không liệt kê trong Command Palette (phím giữ, nudge, Esc — thao tác chỉ có nghĩa khi
+   * bấm phím).
+   */
+  palette?: false;
 }
 
 const commands = new Map<string, AppCommand>();

@@ -45,6 +45,7 @@ import { format, t } from '@/i18n';
 import { useDocumentStore } from '@/stores/document';
 import { useProjectStore } from '@/stores/project';
 import { LayerProperties } from './LayerProperties';
+import { ObjectList } from './ObjectList';
 import { LayerRow } from './LayerRow';
 
 /** Chỉ kéo theo chiều dọc của danh sách. */
@@ -189,7 +190,7 @@ export function LayersPanel({ editor }: { editor: Editor }) {
           }}
         />
         <div className="flex-1" />
-        <DropdownMenu>
+        <DropdownMenu modal={false}>
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
@@ -283,6 +284,7 @@ export function LayersPanel({ editor }: { editor: Editor }) {
         </DropdownMenu>
       </div>
 
+      {active?.kind === 'vector' && <ObjectList editor={editor} layer={active} />}
       {active && <LayerProperties editor={editor} layer={active} disabled={disabled} />}
     </div>
   );

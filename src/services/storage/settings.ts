@@ -61,8 +61,26 @@ export function sanitizeSettings(raw: AppSettings | null): AppSettings {
       if (isPaintTargetPolicy(value)) policy[kind] = value;
     }
   }
+  // Dữ liệu đọc từ DB không tin được: kiểm tra từng trường.
+  const view: Record<string, unknown> | null = isPlainObject(raw.view) ? { ...raw.view } : null;
+  const gridSize = view && typeof view.gridSize === 'number' ? view.gridSize : NaN;
   return {
     key: 'app',
+    autosave: typeof raw.autosave === 'boolean' ? raw.autosave : undefined,
+    historyShare:
+      typeof raw.historyShare === 'number' && raw.historyShare >= 0.1 && raw.historyShare <= 0.4
+        ? raw.historyShare
+        : undefined,
+    view: view
+      ? {
+          grid: view.grid === true,
+          rulers: view.rulers === true,
+          snap: view.snap === true,
+          gridSize: Number.isFinite(gridSize)
+            ? Math.min(512, Math.max(4, Math.round(gridSize)))
+            : 32,
+        }
+      : undefined,
     toolOptions: sanitizeToolOptions(raw.toolOptions),
     customPalette: palette,
     paintPolicy: policy,

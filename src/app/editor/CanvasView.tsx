@@ -15,6 +15,7 @@ function readAppearance() {
       ? '0 0 0 1px rgb(255 255 255 / 0.06), 0 10px 30px rgb(0 0 0 / 0.45)'
       : '0 0 0 1px rgb(0 0 0 / 0.05), 0 2px 6px rgb(0 0 0 / 0.08), 0 12px 32px rgb(0 0 0 / 0.12)',
     pixelGrid: dark ? 'rgb(255 255 255 / 0.18)' : 'rgb(0 0 0 / 0.18)',
+    guideGrid: dark ? 'rgb(116 143 252 / 0.4)' : 'rgb(59 91 219 / 0.35)',
   };
 }
 

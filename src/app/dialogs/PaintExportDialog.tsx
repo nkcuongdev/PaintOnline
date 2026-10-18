@@ -21,6 +21,8 @@ export function PaintExportDialog() {
   const dialog = useUiStore((s) => s.dialog);
   const closeDialog = useUiStore((s) => s.closeDialog);
   const projectId = dialog?.kind === 'paintExport' ? dialog.projectId : null;
+  // "Lưu ra file" (Chromium): file đã chọn trong hộp chọn của trình duyệt.
+  const handle = dialog?.kind === 'paintExport' ? dialog.handle : undefined;
   const [redactions, setRedactions] = useState<{ id: string; count: number } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -34,7 +36,7 @@ export function PaintExportDialog() {
         if (cancelled) return;
         if (count === 0) {
           closeDialog();
-          await exportProjectFile(projectId, { bakeRedactions: false });
+          await exportProjectFile(projectId, { bakeRedactions: false, handle });
           return;
         }
         setRedactions({ id: projectId, count });
@@ -42,13 +44,13 @@ export function PaintExportDialog() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, closeDialog]);
+  }, [projectId, handle, closeDialog]);
 
   const count = redactions?.id === projectId ? redactions.count : null;
   const run = async (bakeRedactions: boolean) => {
     if (!projectId) return;
     setBusy(true);
-    await exportProjectFile(projectId, { bakeRedactions });
+    await exportProjectFile(projectId, { bakeRedactions, handle });
     setBusy(false);
     closeDialog();
   };

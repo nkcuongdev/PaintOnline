@@ -71,8 +71,8 @@ tự tính ra sao.
   ngày (docs/perf-baseline.md).
 - Kéo vùng che 600 × 300 trên ảnh 1080p (bản dev): khảm ~8 ms/khung, làm mờ 27–45 ms/khung (bản nháp),
   thả tay tính lại 56–109 ms một lần.
-- File `.paint` "áp dụng vĩnh viễn vùng che" vẫn tô kín pixel dưới mọi Redact (cả khảm/làm mờ) bằng màu
-  của Redact — sau khi nhập lại, vùng khảm/làm mờ hiện thành màu đơn.
+- ~~File `.paint` "áp dụng vĩnh viễn vùng che" vẫn tô kín pixel dưới mọi Redact (cả khảm/làm mờ) bằng
+  màu của Redact.~~ Đã sửa ở GĐ8+9 (ADR 0028): nướng đúng kiểu khảm/làm mờ.
 - Redact trong layer có opacity < 1 hoặc layer bị ẩn thì che kém hơn/không che — theo đúng thuộc tính
   layer người dùng đặt (như GĐ2).
 - JS khởi động 234,2 KB gzip (GĐ6: 227,3 KB; ≤ 250 KB): renderer đối tượng mới, ảnh nền, Làm đẹp nằm

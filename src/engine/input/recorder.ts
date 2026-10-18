@@ -49,12 +49,21 @@ export class InputRecorder {
   private events: RecordedEvent[] = [];
   private start = 0;
 
-  constructor(private readonly document: { width: number; height: number }) {
+  /**
+   * `limit`: chỉ giữ `limit` sự kiện gần nhất ("hộp đen" kèm nhật ký lỗi — mục 10.3); không đặt thì
+   * giữ toàn bộ (công cụ dev).
+   */
+  constructor(
+    private readonly document: { width: number; height: number },
+    private readonly limit = Infinity,
+  ) {
     this.start = performance.now();
   }
 
   record(event: DistributiveOmit<RecordedEvent, 't'>): void {
     this.events.push({ ...event, t: Math.round((performance.now() - this.start) * 10) / 10 });
+    // Cắt theo lô (khi gấp đôi giới hạn) để chi phí trung bình mỗi sự kiện là O(1).
+    if (this.events.length > this.limit * 2) this.events = this.events.slice(-this.limit);
   }
 
   get length(): number {
@@ -66,7 +75,7 @@ export class InputRecorder {
       format: 'paint-online-input',
       version: 1,
       document: { ...this.document },
-      events: this.events,
+      events: Number.isFinite(this.limit) ? this.events.slice(-this.limit) : this.events,
     };
   }
 }

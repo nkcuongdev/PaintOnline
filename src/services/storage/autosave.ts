@@ -103,6 +103,8 @@ export class Autosave {
   private stopped = false;
   private disposed = false;
   private savedAt: number | null = null;
+  /** Tự động lưu theo debounce (Cài đặt — mục 7.3); tắt thì chỉ lưu khi `saveNow`/`close`. */
+  private automatic = true;
 
   private readonly timers: Timers;
   private readonly debounceMs: number;
@@ -150,11 +152,27 @@ export class Autosave {
     if (this.status.kind === 'saved') this.setStatus({ kind: 'dirty' });
     if (this.status.kind === 'error' || this.status.kind === 'quota') return;
     this.clearDebounce();
+    if (!this.automatic) return;
     const wait = Math.max(0, Math.min(this.debounceMs, this.firstDirtyAt + this.maxWaitMs - now));
     this.debounceTimer = this.timers.setTimeout(() => {
       this.debounceTimer = null;
       void this.request('default');
     }, wait);
+  }
+
+  /**
+   * Bật/tắt tự động lưu. Khi tắt, lượt lưu chỉ chạy khi người gọi yêu cầu (Ctrl+S, tab ẩn,
+   * pagehide, chuyển project) — các lớp bảo vệ đó không phụ thuộc cài đặt này.
+   */
+  setAutomatic(enabled: boolean): void {
+    if (this.automatic === enabled) return;
+    this.automatic = enabled;
+    if (enabled) {
+      this.firstDirtyAt = null;
+      this.notifyChange();
+    } else {
+      this.clearDebounce();
+    }
   }
 
   /**

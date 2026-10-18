@@ -1,4 +1,12 @@
-import type { AnnotationObject, Point, PolygonObject, StepObject, ToolId } from '../../core/types';
+import type {
+  AnnotationObject,
+  Point,
+  PolygonObject,
+  Rect,
+  RedactOptions,
+  StepObject,
+  ToolId,
+} from '../../core/types';
 import { DEFAULT_SHADOW } from '../../layers/objects/draw';
 import { constrainSquare, rectFromPoints, snapAngle } from '../../layers/objects/geometry';
 import { makeStroke } from '../../layers/objects/style';
@@ -218,10 +226,8 @@ const buildHighlight: Builder = (ctx, a, b, e) => {
   };
 };
 
-const buildRedact: Builder = (ctx, a, b, e) => {
-  const rect = boxOf(a, b, e);
-  if (rect.width < 1 || rect.height < 1) return null;
-  const o = ctx.options('redact');
+/** Đối tượng Redact phủ `rect` theo option hiện tại (tool Redact, "Che thông tin" của mini toolbar). */
+export function redactObject(rect: Rect, o: Readonly<RedactOptions>): AnnotationObject {
   return {
     id: newId(),
     type: 'redact',
@@ -233,6 +239,12 @@ const buildRedact: Builder = (ctx, a, b, e) => {
     // Màu tô kín (và nền lót của khảm/làm mờ) luôn đen đục — an toàn mặc định (mục 5.4).
     color: '#000000FF',
   };
+}
+
+const buildRedact: Builder = (ctx, a, b, e) => {
+  const rect = boxOf(a, b, e);
+  if (rect.width < 1 || rect.height < 1) return null;
+  return redactObject(rect, ctx.options('redact'));
 };
 
 const buildSpotlight: Builder = (ctx, a, b, e) => {

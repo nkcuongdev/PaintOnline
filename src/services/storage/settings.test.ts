@@ -33,6 +33,27 @@ describe('cài đặt đọc từ DB (mục 4.2)', () => {
     expect(clean.persistRequested).toBe(false);
   });
 
+  it('cài đặt GĐ8+9: tự động lưu, bộ nhớ lịch sử, lưới — giá trị lạ bị bỏ hoặc kẹp', () => {
+    const clean = sanitizeSettings({
+      key: 'app',
+      autosave: false,
+      historyShare: 0.4,
+      view: { grid: true, gridSize: 9999, rulers: 'yes', snap: true },
+    } as unknown as AppSettings);
+    expect(clean.autosave).toBe(false);
+    expect(clean.historyShare).toBe(0.4);
+    expect(clean.view).toEqual({ grid: true, gridSize: 512, rulers: false, snap: true });
+    const junk = sanitizeSettings({
+      key: 'app',
+      autosave: 'no',
+      historyShare: 2,
+      view: 5,
+    } as unknown as AppSettings);
+    expect(junk.autosave).toBeUndefined();
+    expect(junk.historyShare).toBeUndefined();
+    expect(junk.view).toBeUndefined();
+  });
+
   it('dữ liệu rác → cài đặt mặc định', () => {
     expect(sanitizeSettings(null)).toEqual({ key: 'app' });
     expect(sanitizeToolOptions('x')).toBeUndefined();
@@ -57,7 +78,17 @@ describe('Redact khi xuất .paint (mục 10.2)', () => {
     expect(countRedactions(record)).toBe(1);
     const fills = redactionFills(record);
     // Redact (5.5, 5.5, 40×20) → pixel (5, 5) – (46, 26); layer r1 ở (0, 0).
-    expect(fills.get('r1')).toEqual([{ x: 5, y: 5, width: 41, height: 21, rgba: [0, 0, 0, 255] }]);
+    expect(fills.get('r1')).toEqual([
+      {
+        x: 5,
+        y: 5,
+        width: 41,
+        height: 21,
+        rgba: [0, 0, 0, 255],
+        mode: 'solid',
+        full: { x: 5, y: 5, width: 41, height: 21 },
+      },
+    ]);
   });
 
   it('layer ảnh nằm trên layer chú thích không bị tô', () => {

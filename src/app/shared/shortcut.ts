@@ -22,7 +22,10 @@ const KEY_NAMES: Readonly<Record<string, string>> = {
 
 /** Tách phím tắt thành từng phím để hiển thị trong các ô <kbd>. */
 export function shortcutKeys(shortcut: string, isApple: boolean): string[] {
-  return shortcut.split('+').map((part) => {
+  const parts = shortcut.split('+');
+  // Phím cộng ở cuối (`+`, `Mod++`): hai phần rỗng cuối là chính phím `+`.
+  if (shortcut.endsWith('+')) parts.splice(-2, 2, '+');
+  return parts.map((part) => {
     const key = part.trim();
     if (key === 'Mod') return isApple ? '⌘' : 'Ctrl';
     if (isApple && key in APPLE_SYMBOLS) return APPLE_SYMBOLS[key] ?? key;

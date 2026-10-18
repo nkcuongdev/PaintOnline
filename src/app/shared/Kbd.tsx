@@ -14,10 +14,9 @@ interface KbdProps {
 export function Kbd({ shortcut, className, tone = 'default' }: KbdProps) {
   const { isApple } = platformFeatures;
   return (
-    <kbd
-      className={cn('inline-flex items-center gap-0.5 font-sans', className)}
-      aria-label={formatShortcut(shortcut, isApple)}
-    >
+    <kbd className={cn('inline-flex items-center gap-0.5 font-sans', className)}>
+      {/* Trình đọc màn hình đọc cả tổ hợp ("Ctrl+K"), không đọc từng ô. */}
+      <span className="sr-only">{formatShortcut(shortcut, isApple)}</span>
       {shortcutKeys(shortcut, isApple).map((key, index) => (
         <span
           key={`${String(index)}-${key}`}

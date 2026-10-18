@@ -14,8 +14,9 @@ afterEach(() => {
 if (typeof window.matchMedia !== 'function') {
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
+    // Mô phỏng khung nhìn desktop 1280 px (như E2E): `(min-width: …)` khớp tới 1280.
     value: vi.fn((query: string) => ({
-      matches: false,
+      matches: Number(/\(min-width:\s*(\d+)px\)/.exec(query)?.[1] ?? Infinity) <= 1280,
       media: query,
       onchange: null,
       addEventListener: vi.fn(),

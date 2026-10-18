@@ -1,5 +1,6 @@
 import { releaseProxy, transfer, wrap, type Remote } from 'comlink';
 import type {
+  Color,
   FilterRequest,
   FloodFillRequest,
   FloodFillResult,
@@ -135,6 +136,13 @@ export class WorkerPool implements WorkerClient, ImageCodec {
     return this.withCanvas(
       (api) => api.thumbnail(transfer(bitmap, [bitmap]), maxSide),
       async () => (await mainThread()).thumbnail(bitmap, maxSide),
+    );
+  }
+
+  palette(bitmap: ImageBitmap): Promise<Color[]> {
+    return this.withCanvas(
+      (api) => api.palette(transfer(bitmap, [bitmap])),
+      async () => (await mainThread()).palette(bitmap),
     );
   }
 

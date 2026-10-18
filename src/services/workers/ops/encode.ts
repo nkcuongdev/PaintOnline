@@ -1,4 +1,5 @@
-import { decodePngAsync, encodePngAsync, fillRgba, zlibAsync } from './png';
+import { decodePngAsync, encodePngAsync, zlibAsync } from './png';
+import { bakeRedactions, type RedactBake } from './redactBake';
 
 /**
  * Mã hóa/giải mã ảnh (mục 5.8, 6.6): chạy trong Worker bằng OffscreenCanvas; cùng các hàm này
@@ -29,14 +30,8 @@ export interface DecodeOptions {
 }
 
 /** Một vùng cần tô kín (nướng Redact vào pixel khi xuất .paint — mục 10.2). */
-export interface FillRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  /** Màu đục [r, g, b, a]. */
-  rgba: [number, number, number, number];
-}
+/** Vùng che cần nướng vào layer (tô kín, khảm hoặc làm mờ — redactBake.ts). */
+export type FillRect = RedactBake;
 
 /** Môi trường không có OffscreenCanvas (vd. WebKit cũ trong Worker): pool chuyển sang main thread. */
 export class CanvasUnsupportedError extends Error {
@@ -192,7 +187,7 @@ export async function fillLayerRects(
   rects: readonly FillRect[],
 ): Promise<ArrayBuffer> {
   const image = await decodeLayerPng(png);
-  fillRgba(image, rects);
+  bakeRedactions(image, rects);
   return toArrayBuffer(await encodePngAsync(image.data, image.width, image.height));
 }
 

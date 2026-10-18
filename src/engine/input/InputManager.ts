@@ -17,6 +17,13 @@ export interface InputHandlers {
   endTemporaryPan(): void;
   /** Giá trị CSS cursor hiện tại của tool. */
   cursor(): string;
+  /**
+   * Alt + kéo chuột phải: HUD chỉnh cỡ/độ cứng cọ (mục 7.6). Trả false nếu tool hiện tại không có
+   * cọ — khi đó chuột phải mở menu như thường.
+   */
+  adjustStart(screen: Point): boolean;
+  adjustMove(screen: Point): void;
+  adjustEnd(): void;
 }
 
 /** Ngón thứ hai chạm trong khoảng này thì nét đang vẽ bị hủy (mục 5.9). */
@@ -61,6 +68,10 @@ export class InputManager {
   private activePointer: number | null = null;
   private activeStart = 0;
   private middlePan = false;
+  /** Pointer đang kéo HUD chỉnh cọ (Alt + chuột phải). */
+  private adjusting: number | null = null;
+  /** Bỏ qua menu chuột phải ngay sau khi kéo HUD (Windows mở menu khi nhả chuột). */
+  private suppressMenuUntil = 0;
   private readonly touches = new Map<number, Point>();
   private pinch: Pinch | null = null;
   private gestureScale = 1;
@@ -112,6 +123,7 @@ export class InputManager {
     // Menu chuột phải của trình duyệt được thay bằng menu theo ngữ cảnh của app (mục 5.9).
     on('contextmenu', (e) => {
       e.preventDefault();
+      if (this.adjusting !== null || e.timeStamp < this.suppressMenuUntil) return;
       if (this.activePointer !== null || this.pinch) return;
       this.handlers.contextMenu(this.local(e.clientX, e.clientY));
     });
@@ -189,7 +201,21 @@ export class InputManager {
       }
       if (this.touches.size > 2 || this.pinch) return;
     }
-    if (this.activePointer !== null) return;
+    if (this.activePointer !== null || this.adjusting !== null) return;
+    // Alt + chuột phải: HUD chỉnh cọ (mục 7.6).
+    if (e.pointerType === 'mouse' && e.button === 2 && e.altKey) {
+      const local = this.local(e.clientX, e.clientY);
+      if (this.handlers.adjustStart(local)) {
+        e.preventDefault();
+        this.adjusting = e.pointerId;
+        try {
+          this.element.setPointerCapture(e.pointerId);
+        } catch {
+          // Không capture được: vẫn nhận move trong vùng canvas.
+        }
+        return;
+      }
+    }
     // Chuột phải dành cho context menu (GĐ2); nút khác ngoài trái/giữa bị bỏ qua.
     if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1) return;
 
@@ -220,6 +246,10 @@ export class InputManager {
         return;
       }
     }
+    if (this.adjusting === e.pointerId) {
+      this.handlers.adjustMove(this.local(e.clientX, e.clientY));
+      return;
+    }
     if (this.activePointer === e.pointerId) {
       this.fill(e, true);
       this.handlers.move(this.event);
@@ -238,6 +268,12 @@ export class InputManager {
         if (this.touches.size < 2) this.pinch = null;
         return;
       }
+    }
+    if (this.adjusting === e.pointerId) {
+      this.adjusting = null;
+      this.suppressMenuUntil = e.timeStamp + 500;
+      this.handlers.adjustEnd();
+      return;
     }
     if (this.activePointer !== e.pointerId) return;
     this.activePointer = null;

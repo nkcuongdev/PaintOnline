@@ -11,6 +11,8 @@ import {
   type EncodeOptions,
   type FillRect,
 } from './ops/encode';
+import type { Color } from '@/engine/core/types';
+import { paletteOfBitmap } from './ops/palette';
 import { DEFAULT_UNZIP_LIMITS, unzipLimited, zipEntries, type ZipEntry } from './ops/zip';
 
 /**
@@ -35,6 +37,8 @@ export interface ImageCodec {
   zip(entries: ZipEntry[]): Promise<Uint8Array>;
   /** Giải nén có giới hạn (mục 10.2); ném ZipError. */
   unzip(data: Uint8Array, accept: RegExp): Promise<Map<string, Uint8Array>>;
+  /** Màu chủ đạo của ảnh mẫu đã thu nhỏ (bảng màu project — mục 7.6). Bitmap bị đóng. */
+  palette(bitmap: ImageBitmap): Promise<Color[]>;
 }
 
 export const mainThreadCodec: ImageCodec = {
@@ -50,6 +54,7 @@ export const mainThreadCodec: ImageCodec = {
     Promise.resolve(
       unzipLimited(data, { ...DEFAULT_UNZIP_LIMITS, accept: (path) => accept.test(path) }),
     ),
+  palette: (bitmap) => Promise.resolve(paletteOfBitmap(bitmap)),
 };
 
 export type { DecodeOptions, EncodeOptions, EncodeType, FillRect } from './ops/encode';

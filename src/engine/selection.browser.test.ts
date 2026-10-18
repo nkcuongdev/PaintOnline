@@ -528,9 +528,34 @@ describe('Biến đổi ảnh và bộ nhớ (mục 5.11, ADR 0025)', () => {
     const before = editor.readPixels();
     expect(editor.memory.usedBy('layer')).toBe(2 * layerBytes);
     expect(await editor.image.rotate(90)).toBe(true);
-    expect(editor.memory.usedBy('temp')).toBeLessThan(layerBytes);
+    // Layer mới thuộc document (hạng mục layer); layer cũ nằm trong command ở hạng mục tạm cho tới
+    // khi được nén lúc rảnh.
+    expect(editor.memory.usedBy('layer')).toBe(2 * layerBytes);
+    expect(editor.memory.usedBy('temp')).toBeLessThanOrEqual(2 * layerBytes);
     editor.undo();
     expect(hashPixels(editor.readPixels())).toBe(hashPixels(before));
+  });
+
+  it('undo biến đổi ảnh sau khi layer cũ đã được nén: phần dành cho layer không chặn (GĐ9)', async () => {
+    const layerBytes = 256 * 256 * 4;
+    // Tổng 2 MB: phần layer ~1,2 MB; 3 layer phủ kín 768 KB. Sau khi xoay, nếu undo giải nén ≥ 2
+    // layer cũ vào phần layer (cách tính cũ) thì vượt 1,2 MB và bị từ chối.
+    const editor = fullLayers(256, 256, 3, 2 * 1024 * 1024);
+    const before = editor.readPixels();
+    expect(await editor.image.rotate(90)).toBe(true);
+    // Chờ layer cũ được nén lúc rảnh (rời bộ nhớ canvas): còn tối đa một layer chưa nén.
+    await expect
+      .poll(() => editor.memory.usedBy('layer') + editor.memory.usedBy('temp'), {
+        timeout: 8000,
+      })
+      .toBeLessThanOrEqual(4 * layerBytes);
+    const notices: string[] = [];
+    editor.on('notice', ({ code }) => notices.push(code));
+    editor.undo();
+    expect(notices).toEqual([]);
+    expect(hashPixels(editor.readPixels())).toBe(hashPixels(before));
+    editor.redo();
+    expect(notices).toEqual([]);
   });
 
   it('vượt tổng ngân sách: từ chối có thông báo, ảnh và layer giữ nguyên', async () => {

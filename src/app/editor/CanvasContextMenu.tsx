@@ -1,4 +1,11 @@
 import {
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignHorizontalJustifyCenter,
+  AlignStartHorizontal,
+  AlignStartVertical,
   BringToFront,
   Check,
   ClipboardPaste,
@@ -37,11 +44,23 @@ import { t } from '@/i18n';
 import { useUiStore } from '@/stores/ui';
 import { CommandItem } from './ImageMenu';
 
+/** Mục mở menu con căn chỉnh đối tượng. */
+const ALIGN = 'submenu:align';
+const ALIGN_ITEMS: readonly string[] = [
+  'object.alignLeft',
+  'object.alignCenterX',
+  'object.alignRight',
+  'object.alignTop',
+  'object.alignCenterY',
+  'object.alignBottom',
+];
+
 const OBJECT_ITEMS: readonly (string | null)[] = [
   'edit.delete',
   null,
   'object.bringToFront',
   'object.sendToBack',
+  ALIGN,
   null,
   'file.copyImage',
 ];
@@ -114,6 +133,12 @@ const ICONS: Readonly<Record<string, ReactNode>> = {
   'selection.deselect': <X />,
   'selection.all': <SquareDashed />,
   'view.fit': <Maximize />,
+  'object.alignLeft': <AlignStartVertical />,
+  'object.alignCenterX': <AlignCenterVertical />,
+  'object.alignRight': <AlignEndVertical />,
+  'object.alignTop': <AlignStartHorizontal />,
+  'object.alignCenterY': <AlignCenterHorizontal />,
+  'object.alignBottom': <AlignEndHorizontal />,
   'view.actualSize': <Scan />,
 };
 
@@ -166,6 +191,18 @@ export function CanvasContextMenu({ context }: { context: CommandContext }) {
         {visible.map((id, index) =>
           id === null ? (
             <DropdownMenuSeparator key={`sep-${String(index)}`} />
+          ) : id === ALIGN ? (
+            <DropdownMenuSub key={id}>
+              <DropdownMenuSubTrigger data-testid="menu-object-align">
+                <AlignHorizontalJustifyCenter />
+                {t.menu.align}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="min-w-48">
+                {ALIGN_ITEMS.map((item) => (
+                  <CommandItem key={item} id={item} context={context} icon={ICONS[item]} />
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
           ) : id === ROTATE_FLIP ? (
             <DropdownMenuSub key={id}>
               <DropdownMenuSubTrigger data-testid="menu-selection-rotate-flip">

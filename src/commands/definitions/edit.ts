@@ -1,6 +1,7 @@
 import { copySelection, pasteFromMenu } from '@/app/editor/clipboard';
 import { copyProjectImage } from '@/app/editor/actions';
 import { SELECT_TOOLS } from '@/engine/tools/registry';
+import type { AlignMode } from '@/engine/tools/objects/ObjectController';
 import { t } from '@/i18n';
 import type { AppCommand, CommandContext } from '../registry';
 
@@ -22,12 +23,25 @@ function nudge(id: string, dx: number, dy: number, key: string): AppCommand {
     label: () => t.history.moveObject,
     shortcuts: [key, `Shift+${key}`],
     repeat: true,
+    palette: false,
     // Đối tượng vector đang chọn trước; không có thì dời pixel trong vùng chọn.
     enabled: ({ editor }) => editor.objects.hasSelection || editor.selection.hasSelection,
     run: ({ editor }, e) => {
       const step = e?.shiftKey ? NUDGE_LARGE : NUDGE;
       if (editor.objects.hasSelection) editor.objects.nudge(dx * step, dy * step);
       else editor.selection.nudge(dx * step, dy * step);
+    },
+  };
+}
+
+/** Căn chỉnh đối tượng (mục 2 — "căn chỉnh"): không gán phím mặc định. */
+function align(id: string, mode: AlignMode, label: () => string): AppCommand {
+  return {
+    id,
+    label,
+    enabled: ({ editor }) => editor.objects.hasSelection && !editor.readOnly,
+    run: ({ editor }) => {
+      editor.objects.align(mode);
     },
   };
 }
@@ -102,6 +116,7 @@ export const editCommands: AppCommand[] = [
     id: 'edit.escape',
     label: () => t.menu.deselect,
     shortcuts: ['Escape'],
+    palette: false,
     enabled: ({ editor }) =>
       editor.isGestureActive || editor.objects.hasSelection || editor.selection.hasSelection,
     run: ({ editor }) => {
@@ -176,6 +191,15 @@ export const editCommands: AppCommand[] = [
     },
   },
   {
+    // Mini toolbar (mục 7.6): Redact phủ hình bao vùng chọn.
+    id: 'selection.redact',
+    label: () => t.menu.redactSelection,
+    enabled: (ctx) => writable(ctx) && hasPixelSelection(ctx) && !ctx.editor.selection.isFloating,
+    run: ({ editor }) => {
+      editor.selection.redact();
+    },
+  },
+  {
     id: 'selection.delete',
     label: () => t.menu.deleteSelection,
     enabled: (ctx) => writable(ctx) && hasPixelSelection(ctx),
@@ -211,6 +235,12 @@ export const editCommands: AppCommand[] = [
       editor.objects.sendToBack();
     },
   },
+  align('object.alignLeft', 'left', () => t.menu.alignLeft),
+  align('object.alignCenterX', 'centerX', () => t.menu.alignCenterX),
+  align('object.alignRight', 'right', () => t.menu.alignRight),
+  align('object.alignTop', 'top', () => t.menu.alignTop),
+  align('object.alignCenterY', 'centerY', () => t.menu.alignCenterY),
+  align('object.alignBottom', 'bottom', () => t.menu.alignBottom),
   nudge('object.nudgeLeft', -1, 0, 'ArrowLeft'),
   nudge('object.nudgeRight', 1, 0, 'ArrowRight'),
   nudge('object.nudgeUp', 0, -1, 'ArrowUp'),

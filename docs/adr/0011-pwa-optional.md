@@ -13,3 +13,7 @@
 ## Hệ quả
 
 - Mở nhanh và dùng được khi mất mạng; không cài thì app vẫn là trang web bình thường.
+- Hiện thực ở GĐ8+9 (ADR 0028): `generateSW` precache mọi file của bản build, `registerType: 'prompt'`,
+  toast "Lưu và tải lại" lưu project đang mở rồi mới kích hoạt bản mới; tắt trong bản dev và bench.
+  E2E "tắt mạng rồi reload" chạy trên Chromium và Firefox (Playwright WebKit không có service worker
+  trên Windows/Linux — Safari kiểm tay).

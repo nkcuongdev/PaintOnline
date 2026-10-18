@@ -262,6 +262,13 @@ export class History {
     this.bytes = bytes;
   }
 
+  /** Áp lại giới hạn sau khi ngân sách history đổi (Cài đặt). */
+  enforceLimits(): void {
+    const steps = this.undoStack.length;
+    this.trim();
+    if (this.undoStack.length !== steps) this.changed();
+  }
+
   /** Loại bước cũ nhất khi vượt số bước hoặc ngân sách history; giữ tối thiểu `minSteps`. */
   private trim(): void {
     const limit = this.budget.limitFor('history');

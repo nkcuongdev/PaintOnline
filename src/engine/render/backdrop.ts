@@ -213,9 +213,8 @@ export class BackdropEffects implements BackdropSource {
         ? doc.bounds
         : intersectRect(inflateRect(read, BELOW_MARGIN), doc.bounds);
     this.below = null;
-    const work = createSurface(this.host.memory, rect.width, rect.height, 'temp', {
-      willReadFrequently: true,
-    });
+    // Canvas GPU rồi đọc ngược đúng vùng: canvas CPU khiến Chromium đọc ngược cả texture của mọi layer.
+    const work = createSurface(this.host.memory, rect.width, rect.height, 'temp');
     try {
       const ctx = work.ctx;
       ctx.setTransform(1, 0, 0, 1, -rect.x, -rect.y);

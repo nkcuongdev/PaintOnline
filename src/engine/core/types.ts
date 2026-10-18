@@ -659,6 +659,16 @@ export interface LayerCapture {
   bitmap: Promise<ImageBitmap>;
 }
 
+/**
+ * Lưới và bám lưới (mục 2, P2 — "Grid, thước đo, căn chỉnh"): lưới vẽ trên overlay theo khoảng cách
+ * pixel ảnh, không vào ảnh xuất; bám lưới làm tròn tọa độ của tool hình học.
+ */
+export interface GuideSettings {
+  grid: boolean;
+  gridSize: number;
+  snap: boolean;
+}
+
 /** Khung nhìn lưu kèm document / phiên làm việc. */
 export interface ViewData {
   zoom: number;

@@ -42,12 +42,23 @@ async function init(): Promise<void> {
     readPreviousSession(repo),
     settings.load(),
   ]);
-  if (appSettings.customPalette) {
-    useSettingsStore.setState({ customPalette: appSettings.customPalette });
-  }
-  // Bảng màu tùy chỉnh: lưu khi đổi.
+  useSettingsStore.setState({
+    ...(appSettings.customPalette ? { customPalette: appSettings.customPalette } : {}),
+    ...(appSettings.autosave !== undefined ? { autosave: appSettings.autosave } : {}),
+    ...(appSettings.historyShare !== undefined ? { historyShare: appSettings.historyShare } : {}),
+    ...(appSettings.view ? { view: appSettings.view } : {}),
+  });
+  // Bảng màu tùy chỉnh, cài đặt: lưu khi đổi.
   useSettingsStore.subscribe((state, prev) => {
     if (state.customPalette !== prev.customPalette) settings.setCustomPalette(state.customPalette);
+    // Cài đặt người dùng chủ động đổi (hiếm): ghi ngay, không chờ debounce — tải lại trang ngay sau
+    // đó vẫn giữ.
+    const now = { immediate: true };
+    if (state.autosave !== prev.autosave) settings.update({ autosave: state.autosave }, now);
+    if (state.historyShare !== prev.historyShare) {
+      settings.update({ historyShare: state.historyShare }, now);
+    }
+    if (state.view !== prev.view) settings.update({ view: state.view }, now);
   });
   useProjectStore.setState({ storage: 'ready', previousSession });
   // Thùng rác: xóa hẳn project quá 7 ngày.
@@ -70,6 +81,14 @@ export async function ensurePersistence(): Promise<void> {
   settings.update({ persistRequested: true }, { immediate: true });
   await requestPersistentStorage();
   void refreshStorageEstimate();
+}
+
+/** Người dùng bấm "Yêu cầu lưu bền vững" trong Cài đặt; trả kết quả (null = không hỗ trợ). */
+export async function requestPersistenceNow(): Promise<boolean | null> {
+  settings.update({ persistRequested: true }, { immediate: true });
+  const granted = await requestPersistentStorage();
+  await refreshStorageEstimate();
+  return granted;
 }
 
 /** Nghe thay đổi từ tab khác (danh sách project, dung lượng được giải phóng). */

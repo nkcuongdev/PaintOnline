@@ -1,8 +1,28 @@
-import { copyProjectImage } from '@/app/editor/actions';
+import { copyProjectImage, saveLinkedFile, saveProjectToFile } from '@/app/editor/actions';
 import { saveCurrentProject } from '@/app/editor/session';
-import { t } from '@/i18n';
-import { openDialog, toast } from '@/stores/ui';
+import { format, t } from '@/i18n';
+import { useSettingsStore } from '@/stores/settings';
+import { openDialog, toast, useUiStore } from '@/stores/ui';
 import type { AppCommand } from '../registry';
+
+/** Bật/tắt lưới, thước đo, bám lưới (mục 2, P2) — lưu trong Cài đặt, không gán phím mặc định. */
+function toggleView(id: string, key: 'grid' | 'rulers' | 'snap', name: () => string): AppCommand {
+  return {
+    id,
+    label: () =>
+      format(useSettingsStore.getState().view[key] ? t.view.off : t.view.on, {
+        name: name().toLowerCase(),
+      }),
+    run: () => {
+      const settings = useSettingsStore.getState();
+      const next = !settings.view[key];
+      settings.setView({ [key]: next });
+      useUiStore
+        .getState()
+        .announce(format(next ? t.view.on : t.view.off, { name: name().toLowerCase() }));
+    },
+  };
+}
 
 /** Khung nhìn và xuất ảnh (mục 7.7). Zoom có phím dự phòng `+`/`-` vì Ctrl++ có thể zoom cả trang. */
 export const viewCommands: AppCommand[] = [
@@ -40,6 +60,20 @@ export const viewCommands: AppCommand[] = [
       editor.viewport.actualSize();
     },
   },
+  toggleView('view.grid', 'grid', () => t.view.grid),
+  toggleView('view.rulers', 'rulers', () => t.view.rulers),
+  toggleView('view.snap', 'snap', () => t.view.snap),
+  {
+    // Zen mode (mục 7.6): `\`, không dùng Tab (phím điều hướng focus của trình duyệt).
+    id: 'view.zen',
+    label: () => (useUiStore.getState().zen ? t.view.zenExit : t.view.zen),
+    shortcuts: ['\\'],
+    run: () => {
+      const ui = useUiStore.getState();
+      ui.setZen(!ui.zen);
+      ui.announce(ui.zen ? t.view.zenOff : t.view.zenOn);
+    },
+  },
   {
     // Ctrl+C khi không có vùng chọn = copy ảnh đã ghép; đi qua sự kiện `copy` (không phải keydown),
     // phím ở đây chỉ để hiển thị.
@@ -55,9 +89,11 @@ export const viewCommands: AppCommand[] = [
     id: 'file.save',
     label: () => t.actions.save,
     shortcuts: ['Mod+S'],
-    run: () => {
+    run: ({ project }) => {
       void saveCurrentProject().then((ok) => {
-        if (ok) toast('success', t.storage.savedToast);
+        // Project đã gắn file .paint ("Lưu ra file" — Chromium): ghi đè file đó, toast của nó.
+        if (ok && project.fileLink) void saveLinkedFile(project);
+        else if (ok) toast('success', t.storage.savedToast);
       });
     },
   },
@@ -68,6 +104,14 @@ export const viewCommands: AppCommand[] = [
     shortcuts: ['Mod+Shift+S'],
     run: () => {
       openDialog({ kind: 'export' });
+    },
+  },
+  {
+    // Lưu nhanh ra file (mục 2, P2): Chromium chọn file một lần, Ctrl+S ghi đè; khác: tải .paint.
+    id: 'file.saveToFile',
+    label: () => t.fileSave.saveAs,
+    run: ({ project }) => {
+      saveProjectToFile(project);
     },
   },
   {

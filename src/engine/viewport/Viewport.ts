@@ -166,6 +166,11 @@ export class Viewport {
    * Phần khung bị giao diện nổi che (tool island, options bar…), CSS px. Canvas vẫn tràn toàn
    * khung; Fit/căn giữa chỉ dùng vùng còn lại để ảnh không nằm dưới thanh công cụ.
    */
+  /** Phần khung nhìn bị UI nổi che (tool island…) — overlay của UI tránh đặt vào đó. */
+  get occluded(): Readonly<Insets> {
+    return this.insets;
+  }
+
   setInsets(insets: Partial<Insets>): void {
     this.insets = { ...this.insets, ...insets };
   }

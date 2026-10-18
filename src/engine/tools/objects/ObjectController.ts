@@ -43,6 +43,27 @@ export interface ObjectHost {
   selectionChanged(summary: ObjectSelectionSummary): void;
 }
 
+/** Cạnh/tâm để căn chỉnh đối tượng. */
+export type AlignMode = 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom';
+
+/** Độ dời (làm tròn px) để `box` căn với `target` theo `mode`. */
+export function alignOffset(mode: AlignMode, box: Rect, target: Rect): [number, number] {
+  switch (mode) {
+    case 'left':
+      return [Math.round(target.x - box.x), 0];
+    case 'centerX':
+      return [Math.round(target.x + target.width / 2 - (box.x + box.width / 2)), 0];
+    case 'right':
+      return [Math.round(target.x + target.width - (box.x + box.width)), 0];
+    case 'top':
+      return [0, Math.round(target.y - box.y)];
+    case 'centerY':
+      return [0, Math.round(target.y + target.height / 2 - (box.y + box.height / 2))];
+    case 'bottom':
+      return [0, Math.round(target.y + target.height - (box.y + box.height))];
+  }
+}
+
 export interface ObjectHit {
   layer: VectorLayer;
   object: AnnotationObject;
@@ -354,6 +375,27 @@ export class ObjectController {
     return this.replace(moved, 'history.moveObject', 'nudge');
   }
 
+  /**
+   * Căn chỉnh đối tượng đang chọn (mục 2 — "căn chỉnh"): nhiều đối tượng căn theo hình bao chung;
+   * một đối tượng căn theo khung ảnh. Một bước history.
+   */
+  align(mode: AlignMode): boolean {
+    const hits = this.selectedHits();
+    const doc = this.host.document();
+    if (hits.length === 0 || !doc) return false;
+    const boxes = hits.map((hit) => objectBounds(hit.object, this.host.env));
+    const target =
+      hits.length === 1 ? doc.bounds : boxes.reduce((area, box) => unionRect(area, box));
+    const moved = hits.flatMap((hit, i) => {
+      const box = boxes[i];
+      const [dx, dy] = alignOffset(mode, box, target);
+      if (dx === 0 && dy === 0) return [];
+      return rendererFor(hit.object)?.translate(hit.object, dx, dy) ?? [];
+    });
+    if (moved.length === 0) return false;
+    return this.replace(moved, 'history.alignObjects');
+  }
+
   /** Áp option (Options bar) lên đối tượng đang chọn. */
   applyStyle(patch: Readonly<Record<string, unknown>>, mergeKey: string): boolean {
     const colors = this.host.colors();
@@ -494,6 +536,18 @@ export class ObjectController {
     this.lastSummaryKey = key;
     this.host.selectionChanged({ layerId, objects: hits.map((h) => h.object) });
     this.host.invalidateOverlay();
+  }
+
+  /** Hình bao (document) của các đối tượng đang chọn — mini toolbar đặt cạnh vùng này. */
+  selectionBounds(): Rect | null {
+    let area: Rect | null = null;
+    for (const id of this.selection) {
+      const o = this.find(id)?.object;
+      if (!o) continue;
+      const b = objectBounds(o, this.host.env);
+      area = area ? unionRect(area, b) : b;
+    }
+    return area;
   }
 
   private overrideArea(map: ReadonlyMap<ID, AnnotationObject | null> | null): Rect | null {

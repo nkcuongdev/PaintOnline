@@ -92,7 +92,7 @@ function RotateFlipItems({ context, prefix }: { context: CommandContext; prefix:
  */
 export function ImageMenu({ context, disabled }: { context: CommandContext; disabled: boolean }) {
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>

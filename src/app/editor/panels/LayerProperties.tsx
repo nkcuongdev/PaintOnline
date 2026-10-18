@@ -57,7 +57,7 @@ export function LayerProperties({
       </div>
       <div className="flex items-center gap-3">
         <span className="w-16 shrink-0 text-xs text-muted-foreground">{t.layers.blend}</span>
-        <DropdownMenu>
+        <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild disabled={locked}>
             <button
               type="button"

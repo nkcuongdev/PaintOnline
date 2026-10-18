@@ -52,7 +52,21 @@ export interface ProjectMeta {
   lastExportedAt?: number;
   /** Thùng rác, xóa hẳn sau 7 ngày. */
   deletedAt?: number;
+  /** Bảng màu project: màu chủ đạo trích từ ảnh import gần nhất (mục 7.6). */
+  palette?: Color[];
+  /**
+   * File .paint đã chọn bằng "Lưu ra file" (File System Access API — Chromium): Ctrl+S ghi đè vào
+   * file này. `handle` là FileSystemFileHandle (IndexedDB lưu được bằng structured clone).
+   */
+  fileLink?: ProjectFileLink;
   schemaVersion: number;
+}
+
+export interface ProjectFileLink {
+  handle: unknown;
+  name: string;
+  /** Lựa chọn "áp dụng vĩnh viễn vùng che" khi chọn file — dùng lại cho mọi lần lưu sau. */
+  bakeRedactions: boolean;
 }
 
 export interface DocumentRecord {
@@ -124,6 +138,12 @@ export interface AppSettings {
   persistRequested?: boolean;
   /** Lần cuối ẩn lời nhắc sao lưu .paint. */
   backupReminderDismissedAt?: number;
+  /** Tự động lưu (Cài đặt — mục 7.3); thiếu = bật. */
+  autosave?: boolean;
+  /** Phần ngân sách bộ nhớ cho lịch sử hoàn tác. */
+  historyShare?: number;
+  /** Lưới, thước đo, bám lưới. */
+  view?: { grid: boolean; gridSize: number; rulers: boolean; snap: boolean };
 }
 
 export interface SessionRecord {

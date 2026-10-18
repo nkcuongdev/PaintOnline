@@ -6,8 +6,8 @@ import { decodeImage, ImportError } from '@/services/io/importImage';
 import { detectMemoryConfig } from '@/services/platform/deviceTier';
 import { toast } from '@/stores/ui';
 import { codec } from '@/app/storage';
-import { notifyNoImageInClipboard } from './actions';
-import type { OpenProject } from './session';
+import { notifyNoImageInClipboard, paletteOf } from './actions';
+import { setProjectPalette, type OpenProject } from './session';
 
 /**
  * Clipboard của vùng chọn (mục 5.7): copy lưu nội bộ (ImageBitmap + vị trí) và đồng thời ghi PNG
@@ -128,7 +128,11 @@ async function pasteBlob(
         format(t.importErrors.scaled, { width: decoded.width, height: decoded.height }),
       );
     }
-    return project.editor.selection.paste(decoded.bitmap, null);
+    // Ảnh mới vào project: cập nhật bảng màu project (mục 7.6) — trích trước khi bitmap bị đóng.
+    const palette = paletteOf(decoded.bitmap);
+    const pasted = project.editor.selection.paste(decoded.bitmap, null);
+    if (pasted) void palette.then(setProjectPalette);
+    return pasted;
   } finally {
     decoded.bitmap.close();
   }

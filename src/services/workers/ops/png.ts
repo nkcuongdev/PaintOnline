@@ -55,15 +55,6 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
   return out;
 }
 
-function paeth(a: number, b: number, c: number): number {
-  const p = a + b - c;
-  const pa = Math.abs(p - a);
-  const pb = Math.abs(p - b);
-  const pc = Math.abs(p - c);
-  if (pa <= pb && pa <= pc) return a;
-  return pb <= pc ? b : c;
-}
-
 /**
  * Lọc dòng PNG: Paeth cho mọi dòng (dòng đầu: Sub). Bộ lọc cố định thay cho heuristic chọn theo
  * từng dòng — nhanh gấp 2–3 lần mà kích thước gần như không đổi (đo ở GĐ3, docs/perf-baseline.md).
@@ -248,43 +239,73 @@ function parsePng(bytes: Uint8Array): ParsedPng | null {
 }
 
 /** Bỏ lọc các dòng (đủ 5 loại bộ lọc của PNG — file sửa tay có thể dùng bất kỳ loại nào). */
+/**
+ * Bỏ lọc dòng PNG. Vòng nóng riêng cho từng bộ lọc (pixel đầu dòng và dòng đầu tách ra) — không
+ * rẽ nhánh theo từng byte: đo ở GĐ9, mở project M trên Firefox giải mã 5 layer 4K mất 3,3 s với
+ * bản tổng quát. Ghi vào Uint8Array (tự lấy mod 256) rồi trả về dạng Uint8ClampedArray.
+ */
 function unfilter(raw: Uint8Array, width: number, height: number): DecodedPng {
   const stride = width * 4;
   if (raw.length !== (stride + 1) * height) throw new PngError('độ dài dữ liệu');
-  const out = new Uint8ClampedArray(new ArrayBuffer(stride * height));
+  const buffer = new ArrayBuffer(stride * height);
+  const out = new Uint8Array(buffer);
   for (let y = 0; y < height; y++) {
     const filter = raw[y * (stride + 1)];
     const src = y * (stride + 1) + 1;
     const dst = y * stride;
     const up = dst - stride;
-    for (let i = 0; i < stride; i++) {
-      const x = raw[src + i];
-      const a = i >= 4 ? out[dst + i - 4] : 0;
-      const b = y > 0 ? out[up + i] : 0;
-      let v: number;
-      switch (filter) {
-        case 0:
-          v = x;
-          break;
-        case 1:
-          v = x + a;
-          break;
-        case 2:
-          v = x + b;
-          break;
-        case 3:
-          v = x + ((a + b) >> 1);
-          break;
-        case 4:
-          v = x + paeth(a, b, y > 0 && i >= 4 ? out[up + i - 4] : 0);
-          break;
-        default:
-          throw new PngError('bộ lọc');
-      }
-      out[dst + i] = v & 0xff;
+    const first = y === 0;
+    switch (filter) {
+      case 0:
+        out.set(raw.subarray(src, src + stride), dst);
+        break;
+      case 1:
+        for (let i = 0; i < 4; i++) out[dst + i] = raw[src + i];
+        for (let i = 4; i < stride; i++) out[dst + i] = raw[src + i] + out[dst + i - 4];
+        break;
+      case 2:
+        if (first) out.set(raw.subarray(src, src + stride), dst);
+        else for (let i = 0; i < stride; i++) out[dst + i] = raw[src + i] + out[up + i];
+        break;
+      case 3:
+        if (first) {
+          for (let i = 0; i < 4; i++) out[dst + i] = raw[src + i];
+          for (let i = 4; i < stride; i++) {
+            out[dst + i] = raw[src + i] + (out[dst + i - 4] >> 1);
+          }
+        } else {
+          for (let i = 0; i < 4; i++) out[dst + i] = raw[src + i] + (out[up + i] >> 1);
+          for (let i = 4; i < stride; i++) {
+            out[dst + i] = raw[src + i] + ((out[dst + i - 4] + out[up + i]) >> 1);
+          }
+        }
+        break;
+      case 4:
+        if (first) {
+          // Không có dòng trên: Paeth(a, 0, 0) = a — như Sub.
+          for (let i = 0; i < 4; i++) out[dst + i] = raw[src + i];
+          for (let i = 4; i < stride; i++) {
+            out[dst + i] = raw[src + i] + out[dst + i - 4];
+          }
+        } else {
+          // Pixel đầu dòng: Paeth(0, b, 0) = b.
+          for (let i = 0; i < 4; i++) out[dst + i] = raw[src + i] + out[up + i];
+          for (let i = 4; i < stride; i++) {
+            const a = out[dst + i - 4];
+            const b = out[up + i];
+            const c = out[up + i - 4];
+            const pa = Math.abs(b - c);
+            const pb = Math.abs(a - c);
+            const pc = Math.abs(a + b - c - c);
+            out[dst + i] = raw[src + i] + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c);
+          }
+        }
+        break;
+      default:
+        throw new PngError('bộ lọc');
     }
   }
-  return { width, height, data: out };
+  return { width, height, data: new Uint8ClampedArray(buffer) };
 }
 
 /**

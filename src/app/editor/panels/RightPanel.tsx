@@ -5,7 +5,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { Editor } from '@/engine/core/Editor';
 import { t } from '@/i18n';
 import type { ProjectMode } from '@/services/storage/schema';
+import { cn } from '@/lib/utils';
 import { useUiStore, type RightPanelTab } from '@/stores/ui';
+import { setPanelVisible, usePanelVisibility } from '../panelState';
 import { HistoryPanel } from './HistoryPanel';
 import { LayersPanel } from './LayersPanel';
 
@@ -19,7 +21,8 @@ const TRIGGER = 'min-w-0 px-1.5';
 export function RightPanel({ editor, mode = 'paint' }: { editor: Editor; mode?: ProjectMode }) {
   const panel = useUiStore((s) => s.rightPanel);
   const setPanel = useUiStore((s) => s.setRightPanel);
-  if (!panel.open) return null;
+  const { docked, visible } = usePanelVisibility();
+  if (!visible) return null;
   const screenshot = mode === 'screenshot';
   const tabs: readonly RightPanelTab[] = screenshot
     ? ['beautify', 'history']
@@ -31,7 +34,13 @@ export function RightPanel({ editor, mode = 'paint' }: { editor: Editor; mode?: 
       aria-label={screenshot ? t.panel.screenshotLabel : t.panel.label}
       data-testid="right-panel"
       data-keyboard-scope="panel"
-      className="flex w-[280px] shrink-0 flex-col border-l bg-card"
+      data-overlay={docked ? undefined : true}
+      className={cn(
+        'flex w-[280px] shrink-0 flex-col border-l bg-card',
+        // Laptop 1024–1279 px (mục 7.5): ngăn trượt nổi trên canvas.
+        !docked &&
+          'absolute inset-y-0 right-0 z-30 animate-in shadow-island fade-in-0 slide-in-from-right-4',
+      )}
     >
       <Tabs
         value={tab}
@@ -72,7 +81,7 @@ export function RightPanel({ editor, mode = 'paint' }: { editor: Editor; mode?: 
             icon={<PanelRightClose />}
             data-testid="panel-collapse"
             onClick={() => {
-              setPanel({ open: false });
+              setPanelVisible(false);
             }}
           />
         </div>

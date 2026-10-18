@@ -4,6 +4,7 @@ import type { TextEditState } from '@/engine/core/types';
 import { textPadding } from '@/engine/layers/objects/textLayout';
 import { t } from '@/i18n';
 import { useDocumentStore } from '@/stores/document';
+import { useViewTransform, type ViewTransform } from './useViewTransform';
 import { cssHex } from '@/app/shared/color';
 
 /**
@@ -15,29 +16,6 @@ const KEEP_EDITING =
 
 /** Ký tự 0 độ rộng: giữ dòng trống cuối cùng có chiều cao khi đo. */
 const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
-
-interface ViewTransform {
-  zoom: number;
-  panX: number;
-  panY: number;
-}
-
-/** Khung nhìn cập nhật tức thì (không qua throttle của thanh trạng thái) để ô gõ bám theo ảnh. */
-function useViewTransform(editor: Editor): ViewTransform {
-  const [view, setView] = useState<ViewTransform>(() => ({
-    zoom: editor.viewport.zoom,
-    panX: editor.viewport.state.panX,
-    panY: editor.viewport.state.panY,
-  }));
-  useEffect(
-    () =>
-      editor.on('viewportChanged', ({ zoom, panX, panY }) => {
-        setView({ zoom, panX, panY });
-      }),
-    [editor],
-  );
-  return view;
-}
 
 function TextArea({
   editor,

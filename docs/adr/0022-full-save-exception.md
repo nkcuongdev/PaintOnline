@@ -39,3 +39,11 @@ Chấp nhận **lượt lưu đầy đủ của nhiều layer lớn** là ngoạ
   được ghi số đo và chỉ cảnh báo nếu vượt 6 s (gấp đôi ngưỡng — phát hiện hồi quy).
 - Đo lại ở GĐ9 trên thiết bị tham chiếu; nếu lượt lưu đầy đủ thành trường hợp thường gặp (ví dụ
   panel Layers ở GĐ4 cho phép tạo/nhân bản nhiều layer lớn cùng lúc) thì xem lại quyết định này.
+
+## Đo lại ở GĐ9 (GĐ8+9 gộp — ADR 0028)
+
+Lượt lưu đầy đủ M (5 layer 4K): Chromium **4,35 s** ở lượt chốt, nhưng dao động 5,5–9,0 s giữa các
+lần chạy trên máy 2 nhân (một layer mã hóa riêng 0,9 s; 3 Worker song song mỗi layer ~3 s — CPU bão
+hòa). Giới hạn Worker còn 2 hay mã hóa tuần tự không cải thiện ổn định (tuần tự chậm nhất: 8,6–9,1 s).
+Firefox 1,7–2,0 s. Lượt lưu thường M: Chromium 0,75 s, Firefox 0,41 s; long task 0 ms — đạt. Ngoại lệ
+giữ nguyên; mốc 6 s của benchmark vẫn có thể bị vượt trên máy này khi máy bận.

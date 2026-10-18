@@ -412,15 +412,22 @@ async function measureSave(
 
     t = performance.now();
     const loaded = await repo.loadProject(projectId);
+    const tLoad = performance.now();
     const { images } = await decodeLayerImages(loaded, sharedWorkerPool());
+    const tDecode = performance.now();
     const reopened = new Editor({
       memory: TIER_BUDGETS.desktop,
       platform: detectPlatformFeatures(),
       workers: sharedWorkerPool(),
     });
     reopened.createDocument(documentSpecFromRecord(loaded.document, images));
+    const tCreate = performance.now();
     reopened.readPixels({ x: 0, y: 0, width: 1, height: 1 });
     const openMs = performance.now() - t;
+    // Chi tiết từng bước (GĐ9: khoanh vùng khi mở project chậm).
+    console.info(
+      `[bench] mở project: đọc DB ${(tLoad - t).toFixed(0)} ms, giải mã ${(tDecode - tLoad).toFixed(0)} ms, dựng document ${(tCreate - tDecode).toFixed(0)} ms, khung đầu ${(performance.now() - tCreate).toFixed(0)} ms`,
+    );
     reopened.dispose();
     return {
       saveFullMs: Math.round(saveFullMs),

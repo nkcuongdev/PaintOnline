@@ -127,6 +127,7 @@ export const toolsCommands: AppCommand[] = [
   {
     // Giữ Space: Pan tạm thời, nhả ra quay lại tool cũ (mục 5.3).
     id: 'tool.panHold',
+    palette: false,
     label: () => t.tools.pan,
     shortcuts: ['Space'],
     run: ({ editor }) => {
@@ -139,6 +140,7 @@ export const toolsCommands: AppCommand[] = [
   {
     // Giữ Alt: lấy màu tạm thời ở tool vẽ và hình (phím dự phòng: I — mục 7.7).
     id: 'tool.eyedropperHold',
+    palette: false,
     label: () => t.tools.eyedropper,
     shortcuts: ['Alt'],
     enabled: ({ editor }) =>
@@ -169,6 +171,7 @@ export const toolsCommands: AppCommand[] = [
       if (!group) return;
       const size = ctx.editor.options.get(group).size;
       ctx.editor.options.set(group, { size: size + sizeStep(size) });
+      ctx.editor.flashBrushHud();
     },
   },
   {
@@ -182,6 +185,7 @@ export const toolsCommands: AppCommand[] = [
       if (!group) return;
       const size = ctx.editor.options.get(group).size;
       ctx.editor.options.set(group, { size: size - sizeStep(size) });
+      ctx.editor.flashBrushHud();
     },
   },
   {
@@ -192,8 +196,9 @@ export const toolsCommands: AppCommand[] = [
     enabled: (ctx) => brushGroup(ctx) !== null,
     run: (ctx) => {
       const group = brushGroup(ctx);
-      if (group)
-        ctx.editor.options.set(group, { hardness: ctx.editor.options.get(group).hardness + 0.1 });
+      if (!group) return;
+      ctx.editor.options.set(group, { hardness: ctx.editor.options.get(group).hardness + 0.1 });
+      ctx.editor.flashBrushHud();
     },
   },
   {
@@ -204,13 +209,15 @@ export const toolsCommands: AppCommand[] = [
     enabled: (ctx) => brushGroup(ctx) !== null,
     run: (ctx) => {
       const group = brushGroup(ctx);
-      if (group)
-        ctx.editor.options.set(group, { hardness: ctx.editor.options.get(group).hardness - 0.1 });
+      if (!group) return;
+      ctx.editor.options.set(group, { hardness: ctx.editor.options.get(group).hardness - 0.1 });
+      ctx.editor.flashBrushHud();
     },
   },
   {
     // 1–9 → 10%–90%, 0 → 100% (mục 7.7).
     id: 'brush.opacity',
+    palette: false,
     label: () => t.toolOptions.opacity,
     shortcuts: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
     enabled: (ctx) => brushGroup(ctx) !== null,

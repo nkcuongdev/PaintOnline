@@ -173,13 +173,42 @@ Editor ──documentChanged──▶ Autosave (debounce 1,5 s / tối đa 10 s;
   (`SCREENSHOT_TOOLS`), Copy + Tải xuống, panel phải Làm đẹp + Lịch sử (`app/screenshot/BeautifyPanel`);
   kiểu nhanh mũi tên/khung/chữ (`app/editor/presets`, `StylePresets`, `objects.applyPreset`). ADR 0027.
 
-## Cấu trúc thư mục hiện tại (sau GĐ7)
+## Trình duyệt laptop, offline, hoàn thiện (mục 7.5–7.9, 10.3) — GĐ8+9 gộp
+
+Phạm vi chỉ cho trình duyệt laptop (ADR 0028: bố cục tablet/điện thoại và cử chỉ cảm ứng được hoãn).
+
+- **Engine tải lười**: `session.ts` import `Editor` động; trang chủ không tải engine (JS khởi động
+  ~170 KB gzip). App tải trước editor + engine khi trình duyệt rảnh.
+- **Lệnh cấp ứng dụng** (`commands/global.ts`): Command Palette (Ctrl+K, `/`), bảng phím tắt (`?`),
+  Cài đặt, toàn màn hình (Shift+F), theme — dùng được ở mọi màn hình qua `useGlobalShortcuts`
+  (cùng `ShortcutManager` tổng quát theo kiểu ngữ cảnh). Palette (`app/palette`, `cmdk`), bảng phím tắt
+  và Cài đặt tải lười khi mở lần đầu.
+- **Zen mode, mini toolbar, panel laptop**: `uiStore.zen`, `MiniToolbar` (lệnh Registry theo ngữ cảnh),
+  `panelState` (≥ 1280 px panel gắn cố định; 1024–1279 px ngăn nổi, tự đóng khi vẽ).
+- **Lưới, thước, căn chỉnh**: `Editor.setGuides` (lưới trên overlay, bám lưới trong input handler —
+  bản ghi input lưu tọa độ đã bám), `objects.align`, thước đo SVG (`Rulers`). Cài đặt hiển thị ở
+  `settingsStore.view`, ghi vào IndexedDB.
+- **Nhật ký lỗi cục bộ** (`services/diagnostics/errorLog`): lỗi trang, React, autosave, Engine
+  (`EditorDeps.reportError`), kèm "hộp đen" input (`Editor.recentInput`).
+- **PWA** (`vite-plugin-pwa`, `app/pwa.ts`): precache mọi file của bản build, cập nhật khi người dùng
+  đồng ý (lưu trước). Không tính năng nào phụ thuộc việc cài.
+- **Lưu ra file** (`services/io/fileSave`): File System Access API trên Chromium, `ProjectMeta.fileLink`;
+  Ctrl+S ghi đè file đã chọn.
+- **Bảng màu từ ảnh**: `codec.palette` (median cut trong Worker), `ProjectMeta.palette`.
+- **HUD cọ**: `tools/brush/hud`, Alt + kéo chuột phải qua `InputManager.adjust*`.
+
+## Cấu trúc thư mục hiện tại (sau GĐ8+9)
 
 ```
 src/
   app/              UI shell
+    palette/        CommandPalette (cmdk, tải lười), score (lọc theo từ, không dấu)
+    layout/         TopBar, AppButtons (tìm lệnh, toàn màn hình, Cài đặt), useGlobalShortcuts
+    pwa.ts          đăng ký service worker, toast "Có bản mới"
     editor/         EditorScreen, CanvasView, ToolIsland (nút tách Chọn/Tô/Hình/Làm nổi bật; bản rút
-                    gọn của chế độ Screenshot), StylePresets + presets (kiểu nhanh), OptionsBar (sinh từ
+                    gọn của chế độ Screenshot), MiniToolbar, ViewMenu (menu Xem), Rulers + rulerTicks,
+                    panelState (panel gắn cố định / ngăn nổi), useViewTransform, StylePresets +
+                    presets (kiểu nhanh), OptionsBar (sinh từ
                     OptionSchema, cả thuộc tính đối tượng đang chọn, Áp dụng/Hủy pixel nổi),
                     ColorControl (HSV + hex + alpha, bảng màu tùy chỉnh), TextEditOverlay (textarea
                     gõ chữ/IME), CanvasContextMenu (đối tượng / vùng chọn / vùng trống), ImageMenu
@@ -189,21 +218,24 @@ src/
                     project: mở/tạo/đóng, khóa tab, autosave, phiên), actions (mở/copy/xuất/.paint)
       panels/       RightPanel (tab Layers/History/Làm đẹp, thu gọn được), LayersPanel (dnd-kit),
                     LayerRow, LayerThumbnail, LayerProperties (opacity, blend, khóa trong suốt),
-                    HistoryPanel
+                    ObjectList + describeObject (đối tượng đọc được — mục 7.8), HistoryPanel
     screenshot/     BeautifyPanel (khung nền, khoảng nền, bo góc, bóng)
     home/           StartScreen, DropZone (ảnh + .paint), PresetList (+ tùy chỉnh, từ clipboard),
                     ProjectsSection (lưới, tìm kiếm, sắp xếp, thùng rác), ProjectCard, HomeBanners
                     (khôi phục phiên, nhắc sao lưu, không lưu được), StorageMeter
     dialogs/        ExportDialog (+ chỉ vùng chọn), PaintExportDialog (cảnh báo Redact), QuotaDialog,
                     RenameDialog, NewImageDialog, ConfirmDialog, ImageSizeDialogs (Resize, Canvas size),
-                    AdjustmentsPanel (bảng điều chỉnh nổi: xem trước, so sánh, tiến trình)
+                    AdjustmentsPanel (bảng điều chỉnh nổi: xem trước, so sánh, tiến trình),
+                    ShortcutsDialog + shortcutRows (bảng phím tắt), SettingsDialog (Cài đặt, nhật ký
+                    lỗi)
     storage.ts      kết nối IndexedDB, repository, cài đặt, phiên — khởi tạo một lần
     projects.ts     danh sách project + ảnh thu nhỏ cho trang chủ, đồng bộ giữa các tab
-    shared/         IconButton, Kbd, ThemeMenu, color (HSV ↔ hex)…
+    shared/         IconButton, Kbd, ThemeMenu, Segmented, useMediaQuery, color (HSV ↔ hex)…
     engine-bridge.ts  sự kiện Engine → Zustand (đồng bộ / gộp rAF / throttle 100 ms)
     dev/            công cụ dev (input recorder, __paint.editor()) — chỉ có trong bản dev
-  commands/         Command Registry + ShortcutManager có phạm vi; definitions/ (edit — gồm vùng chọn và
-                    clipboard, view, tools, layers, image, filters)
+  commands/         Command Registry + ShortcutManager có phạm vi; global (lệnh cấp ứng dụng);
+                    definitions/ (edit — gồm vùng chọn, clipboard, căn chỉnh; view — lưới, Zen, lưu ra
+                    file; tools, layers, image, filters)
   engine/
     core/           Editor (facade), Document, EventBus, options/colors API, types
     memory/         MemoryBudget (+ chuỗi thu hồi), createSurface, ScratchPool, GrowableSurface
@@ -223,7 +255,7 @@ src/
                     highlight/redact, step, spotlight, magnifier), redactEffect (khảm, làm mờ),
                     geometry, textLayout, style (option ↔ thuộc tính), env (đo chữ,
                     tải font lười), transform (đối tượng theo biến đổi ảnh)
-    tools/          ToolManager, registry, paint (layer đích, commit), brush/ (BrushStroke, dây kéo),
+    tools/          ToolManager, registry, paint (layer đích, commit), brush/ (BrushStroke, dây kéo, hud),
                     pencil, bucket, gradient, eyedropper, view (pan, zoom), selection (Marquee,
                     Lasso, Đũa thần, kéo/handle pixel nổi), crop
       objects/      ObjectController (chọn, tìm, bản nháp, ghi Command), drag (handle/di chuyển),
@@ -239,21 +271,24 @@ src/
     workers/        pool (2–4 Worker, comlink, hủy tác vụ), image.worker (entry duy nhất), codec
                     (ImageCodec + bản main thread), ops/ floodFill, encode, png (PNG RGBA), zip,
                     selection (mask vùng chọn, hình bao alpha), filters/ (mỗi filter một file +
-                    pipeline)
+                    pipeline), palette (màu chủ đạo), redactBake (nướng vùng che vào .paint)
     storage/        db, schema, migrations, projectRepo, autosave, saveStatus, restore, locks,
                     session, settings, quota, channel (BroadcastChannel)
     io/             imageHeader (magic bytes), importImage (giải mã trong Worker), clipboard,
-                    download, exportImage (JPG/WebP + WASM), projectFile (.paint)
-    platform/       features, deviceTier, browserGuards
-  stores/           ui (theme, toast, aria-live, dialog, menu), tool, document, settings, project
+                    download, exportImage (JPG/WebP + WASM), projectFile (.paint), fileSave (File
+                    System Access API)
+    diagnostics/    errorLog (nhật ký lỗi cục bộ)
+    platform/       features, deviceTier, browserGuards, fullscreen
+  stores/           ui (theme, toast, aria-live, dialog, menu, palette, Zen, toàn màn hình), tool,
+                    document, settings (bảng màu tùy chỉnh, tự động lưu, bộ nhớ lịch sử, lưới), project
 tests/
   e2e/              Playwright trên 3 engine (GĐ1, chú thích GĐ2, lưu trữ/.paint/fault-injection GĐ3,
                     panel Layers/History GĐ4, vùng chọn/biến đổi ảnh GĐ5, điều chỉnh/Gradient GĐ6,
-                    chế độ Screenshot/luồng đầy đủ đo 5 lần GĐ7)
+                    chế độ Screenshot/luồng đầy đủ đo 5 lần GĐ7, laptop/offline/axe GĐ8+9)
   bench/            benchmark S/M (+ chú thích, Paint Bucket, autosave, mở project), khởi động;
                     layers.spec (M/L × 5/20 layer, cache, mipmap — BENCH_LAYERS=1), docops.spec
                     (crop/Resize/xoay/Canvas size trên L), filters.spec (xem trước filter khi kéo
-                    slider trên M, áp dụng full-res)
+                    slider trên M, áp dụng full-res), stress.spec (áp lực bộ nhớ — STRESS=1)
 ```
 
 ## Đối tượng vector (mục 5.3, 5.4, 6.2) — GĐ2

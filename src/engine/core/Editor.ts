@@ -28,7 +28,9 @@ import { BeautifyCommand } from '../history/commands/BeautifyCommand';
 import { compositeDocument, drawObjects, type ObjectRenderState } from '../render/Compositor';
 import type { RenderCacheOptions, RenderCacheStats } from '../render/layerCaches';
 import { Renderer, type Appearance, type FrameStats } from '../render/Renderer';
-import { ObjectController } from '../tools/objects/ObjectController';
+import { redactObject } from '../tools/objects/shapes';
+import { drawBrushHud, hudValues, type BrushHudState, type HudGroup } from '../tools/brush/hud';
+import { ObjectController, type AlignMode } from '../tools/objects/ObjectController';
 import { TextSession } from '../tools/objects/TextSession';
 import { getToolDefinition, SELECT_TOOLS } from '../tools/registry';
 import { ImageOps, type CanvasAnchor, type FlipAxis, type RotateAngle } from '../document/ImageOps';
@@ -56,6 +58,7 @@ import type {
   DocumentData,
   EditorEvents,
   FilterSessionSummary,
+  GuideSettings,
   FilterStep,
   ID,
   MemoryBudgetConfig,
@@ -82,6 +85,29 @@ import type {
 
 /** Nhịp marching ants (ms mỗi bước 1 px). */
 const ANTS_INTERVAL_MS = 120;
+/** Tool nhận tọa độ bám lưới (tool hình học, vùng chọn hình học, cắt xén, gradient, chữ). */
+const SNAP_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>([
+  'select',
+  'marquee-rect',
+  'marquee-ellipse',
+  'crop',
+  'gradient',
+  'rect',
+  'ellipse',
+  'line',
+  'arrow',
+  'polygon',
+  'text',
+  'highlight',
+  'redact',
+  'step',
+  'spotlight',
+  'magnifier',
+]);
+/** Thời gian hiện vòng tròn cỡ cọ sau khi bấm `[` `]`. */
+const BRUSH_HUD_FLASH_MS = 700;
+/** Số sự kiện input gần nhất giữ trong "hộp đen" (mục 10.3) — khoảng vài nét vẽ. */
+const BLACK_BOX_EVENTS = 1500;
 
 /** Tool dùng được ở chế độ chỉ đọc (tab khác đang sửa project — mục 6.6): chỉ xem và lấy màu. */
 const READ_ONLY_TOOLS: ReadonlySet<ToolId> = new Set(['pan', 'zoom', 'eyedropper']);
@@ -103,6 +129,11 @@ export interface EditorDeps {
   /** Tên bản sao khi nhân bản layer và tên layer nền sau Flatten (chuỗi giao diện). */
   layerCopyName?: (name: string) => string;
   backgroundName?: () => string;
+  /**
+   * Lỗi không mong đợi bên trong Engine (thao tác ảnh nền thất bại…) — app ghi vào nhật ký lỗi cục
+   * bộ (mục 10.3). Người dùng vẫn nhận thông báo qua `notice`.
+   */
+  reportError?: (error: unknown) => void;
 }
 
 export interface ToolsAPI {
@@ -142,6 +173,10 @@ export interface ObjectsAPI {
   ): void;
   /** Tìm đối tượng theo id (test, UI). */
   get(id: ID): AnnotationObject | null;
+  /** Hình bao (document) của các đối tượng đang chọn; null nếu không chọn gì. */
+  selectionBounds(): Rect | null;
+  /** Căn chỉnh đối tượng đang chọn (nhiều đối tượng: theo hình bao chung; một: theo khung ảnh). */
+  align(mode: AlignMode): boolean;
 }
 
 /** Phiên sửa chữ (mục 5.10) — UI đặt textarea chồng lên canvas. */
@@ -198,6 +233,11 @@ export interface SelectionAPI {
   cancel(): boolean;
   /** Delete: xóa pixel trong vùng chọn (hoặc bỏ pixel nổi). */
   deleteContent(): boolean;
+  /**
+   * "Che thông tin" (mini toolbar — mục 7.6): thêm đối tượng Redact phủ hình bao vùng chọn theo
+   * option Redact hiện tại, rồi bỏ chọn.
+   */
+  redact(): boolean;
   /** Tô vùng chọn bằng màu chính. */
   fill(): boolean;
   /** Pixel trong vùng chọn + vị trí; `merged` = ảnh đang thấy thay vì layer hoạt động. */
@@ -337,11 +377,20 @@ export class Editor {
   /** Stroke buffer dùng chung giữa các nét; giải phóng khi đổi document, tab ẩn hoặc dispose. */
   private sharedStroke: GrowableSurface | null = null;
   private hoverPoint: Point | null = null;
+  /** Lưới và bám lưới (mục 2, P2). */
+  private guideSettings: GuideSettings = { grid: false, gridSize: 32, snap: false };
+  /** Điểm bấm của thao tác kéo bằng tool Chọn khi bám lưới (dời theo bội số lưới). */
+  private snapAnchor: Point | null = null;
+  /** HUD chỉnh cọ (mục 7.6). */
+  private brushHud: BrushHudState | null = null;
+  private brushHudTimer = 0;
   private pendingFit = false;
   private pendingView: ViewData | null = null;
   private isBusy = false;
   private isReadOnly = false;
   private recorder: InputRecorder | null = null;
+  /** "Hộp đen": luôn ghi các thao tác gần nhất để đính kèm nhật ký lỗi cục bộ (mục 10.3). */
+  private blackBox: InputRecorder | null = null;
   private readonly unmountFns: (() => void)[] = [];
   private readonly disposers: Unsubscribe[] = [];
   private readonly replayEvent: DocPointerEvent;
@@ -447,12 +496,19 @@ export class Editor {
       floating: () => this.selectionManager.floating,
       filter: () => this.filterRunner.filterPreview(),
       hover: () => this.hoverPoint,
+      grid: () => (this.guideSettings.grid ? this.guideSettings.gridSize : null),
       objects: () => this.objectState(true),
       drawToolOverlay: (overlay) => {
         // Marching ants luôn hiện; handle biến đổi chỉ khi đang dùng tool chọn (mục 5.7).
         const showHandles = SELECT_TOOLS.includes(this.toolManager.activeId);
         this.selectionManager.renderOverlay(overlay, showHandles);
-        this.toolManager.renderOverlay(overlay);
+        const hud = this.brushHud;
+        // Đang kéo HUD (Alt đang giữ → tool lấy màu tạm thời): chỉ vẽ HUD, không vẽ kính lúp.
+        if (!hud?.dragging) this.toolManager.renderOverlay(overlay);
+        if (hud) {
+          const o = this.options.get(hud.group);
+          drawBrushHud(overlay.ctx, hud.origin, o.size, o.hardness, this.viewport.zoom);
+        }
       },
     });
     this.toolManager = new ToolManager(this.createToolContext(), this.events);
@@ -503,6 +559,11 @@ export class Editor {
       execute: (command) => this.executeSafe(command),
       notify: (code) => {
         this.notify(code);
+      },
+      reportError: (error) => {
+        const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+        console.warn(`[Paint Online] Thao tác ảnh thất bại — ${detail}`, error);
+        deps.reportError?.(error);
       },
       settle: () => {
         this.toolManager.cancel();
@@ -575,7 +636,7 @@ export class Editor {
       }),
       this.events.on('toolChanged', ({ tool, temporary }) => {
         this.input?.refreshCursor();
-        this.recorder?.record({ type: 'tool', tool });
+        this.record({ type: 'tool', tool });
         // Đổi sang tool khác (không phải tool tạm thời như Pan khi giữ Space): commit pixel nổi.
         if (!temporary && !SELECT_TOOLS.includes(tool)) this.selectionManager.commitFloating();
         // Đổi sang tool khác khi đang gõ chữ: ghi chữ đang gõ, không bỏ dở nội dung đã nhập.
@@ -586,14 +647,14 @@ export class Editor {
       this.events.on('toolOptionsChanged', ({ group, options }) => {
         this.input?.refreshCursor();
         this.renderer.invalidateOverlay();
-        this.recorder?.record({ type: 'options', group, options: { ...options } });
+        this.record({ type: 'options', group, options: { ...options } });
         // Đổi kiểu chữ trong lúc đang gõ: áp ngay cho chữ đang sửa.
         if (group === 'text' && this.textSession.active) {
           this.textSession.restyle(options);
         }
       }),
       this.events.on('colorsChanged', ({ primary, secondary }) => {
-        this.recorder?.record({ type: 'colors', primary, secondary });
+        this.record({ type: 'colors', primary, secondary });
       }),
     );
 
@@ -674,6 +735,7 @@ export class Editor {
     if (this.viewport.hasSize) this.applyInitialView();
     else this.pendingFit = true;
     this.renderer.invalidate();
+    this.blackBox = this.startRecorder(new InputRecorder(this.docSize, BLACK_BOX_EVENTS));
     this.emitDocument(true);
     return true;
   }
@@ -777,6 +839,15 @@ export class Editor {
     this.renderer.contentChanged(area);
     this.renderer.invalidate(area ?? undefined);
     this.emitDocument(area === null);
+  }
+
+  /**
+   * Phần ngân sách bộ nhớ dành cho lịch sử hoàn tác (Cài đặt — mục 7.3); giảm thì bỏ bớt bước cũ
+   * nhất ngay.
+   */
+  setHistoryShare(share: number): void {
+    this.memory.setHistoryShare(share);
+    this.history.enforceLimits();
   }
 
   get canUndo(): boolean {
@@ -1072,9 +1143,10 @@ export class Editor {
     const doc = this.doc;
     if (!doc) throw new Error('Chưa có document');
     const r = rect ?? doc.bounds;
-    const surface = createSurface(this.memory, r.width, r.height, 'temp', {
-      willReadFrequently: true,
-    });
+    // Ghép trên canvas GPU (không `willReadFrequently`) rồi đọc ngược đúng vùng `r`: vẽ layer GPU
+    // sang canvas CPU khiến Chromium đọc ngược CẢ texture nguồn — đo ở GĐ9: đọc 1 pixel của ảnh
+    // 4K × 5 layer mất 266 ms (lấy màu, mở project).
+    const surface = createSurface(this.memory, r.width, r.height, 'temp');
     try {
       const ctx = surface.ctx;
       ctx.setTransform(1, 0, 0, 1, -r.x, -r.y);
@@ -1099,13 +1171,27 @@ export class Editor {
   startRecording(): void {
     const doc = this.doc;
     if (!doc) return;
-    this.recorder = new InputRecorder({ width: doc.width, height: doc.height });
-    this.recorder.record({ type: 'tool', tool: this.toolManager.activeId });
+    this.recorder = this.startRecorder(new InputRecorder({ width: doc.width, height: doc.height }));
+  }
+
+  /** Các thao tác gần nhất (tối đa `BLACK_BOX_EVENTS` sự kiện) — đính kèm nhật ký lỗi. */
+  recentInput(): Recording | null {
+    return this.blackBox?.finish() ?? null;
+  }
+
+  private startRecorder(recorder: InputRecorder): InputRecorder {
+    recorder.record({ type: 'tool', tool: this.toolManager.activeId });
     const primary = this.colors.primary;
-    this.recorder.record({ type: 'colors', primary, secondary: this.colors.secondary });
+    recorder.record({ type: 'colors', primary, secondary: this.colors.secondary });
     for (const group of ['brush', 'eraser'] as const) {
-      this.recorder.record({ type: 'options', group, options: { ...this.options.get(group) } });
+      recorder.record({ type: 'options', group, options: { ...this.options.get(group) } });
     }
+    return recorder;
+  }
+
+  private record(event: Parameters<InputRecorder['record']>[0]): void {
+    this.recorder?.record(event);
+    this.blackBox?.record(event);
   }
 
   stopRecording(): Recording | null {
@@ -1186,6 +1272,8 @@ export class Editor {
   }
 
   dispose(): void {
+    window.clearTimeout(this.brushHudTimer);
+    this.brushHud = null;
     this.unmount();
     this.filterRunner.dispose();
     this.textSession.cancel();
@@ -1197,6 +1285,7 @@ export class Editor {
     this.backdrop.clear();
     this.doc?.dispose();
     this.doc = null;
+    this.blackBox = null;
     this.renderer.dispose();
     this.exportScratch.dispose();
     this.objectEnv.dispose();
@@ -1265,7 +1354,7 @@ export class Editor {
       return false;
     }
     if (!done) return false;
-    this.recorder?.record({ type: direction });
+    this.record({ type: direction });
     this.syncGeometry();
     // Cache chỉ dựng lại vùng của command; màn hình vẽ lại toàn bộ (rẻ: một frame).
     this.renderer.contentChanged(done.affectedArea?.() ?? null);
@@ -1539,6 +1628,14 @@ export class Editor {
       cancel: () => manager.cancelFloating(),
       deleteContent: () => writable() && manager.deleteContent(),
       fill: () => writable() && manager.fillContent(),
+      redact: () => {
+        const summary = manager.summary();
+        if (!writable() || !summary || summary.floating) return false;
+        const object = redactObject(summary.bounds, this.options.get('redact'));
+        if (!this.objectController.add(object, 'history.addRedact')) return false;
+        manager.deselect();
+        return true;
+      },
       copy: (merged = false) => manager.copy(merged),
       cut: () => (writable() ? manager.cut() : null),
       paste: (image, at = null) => {
@@ -1672,6 +1769,8 @@ export class Editor {
         if (controller.hasSelection) controller.applyPreset(applied, colors);
       },
       get: find,
+      selectionBounds: () => controller.selectionBounds(),
+      align: (mode) => !this.isReadOnly && controller.align(mode),
     };
   }
 
@@ -1777,6 +1876,7 @@ export class Editor {
           this.notify('filter.open');
           return;
         }
+        this.snapPointer('down', e);
         this.recordPointer('down', e);
         // Click ra ngoài khi đang gõ chữ: kết thúc phiên sửa (tool Text tự xử lý click của nó).
         if (this.textSession.active && this.toolManager.activeId !== 'text') {
@@ -1790,6 +1890,7 @@ export class Editor {
       },
       move: (e) => {
         if (!this.doc) return;
+        this.snapPointer('move', e);
         this.recordPointer('move', e);
         this.hoverPoint = { x: e.x, y: e.y };
         this.emitPointer();
@@ -1797,11 +1898,12 @@ export class Editor {
       },
       up: (e) => {
         if (!this.doc) return;
+        this.snapPointer('up', e);
         this.recordPointer('up', e);
         this.toolManager.pointerUp(e);
       },
       cancel: () => {
-        this.recorder?.record({ type: 'cancel' });
+        this.record({ type: 'cancel' });
         this.toolManager.cancel();
       },
       hover: (h) => {
@@ -1835,12 +1937,104 @@ export class Editor {
         this.toolManager.popTemporary('pan');
       },
       cursor: () => this.toolManager.cursor().css,
+      adjustStart: (screen) => {
+        const group = this.hudGroup();
+        if (!group || this.isReadOnly) return false;
+        const o = this.options.get(group);
+        window.clearTimeout(this.brushHudTimer);
+        this.brushHud = {
+          group,
+          origin: screen,
+          startSize: o.size,
+          startHardness: o.hardness,
+          dragging: true,
+        };
+        this.renderer.invalidateOverlay();
+        return true;
+      },
+      adjustMove: (screen) => {
+        const hud = this.brushHud;
+        if (!hud?.dragging) return;
+        this.options.set(hud.group, hudValues(hud, screen, this.viewport.zoom));
+        this.renderer.invalidateOverlay();
+      },
+      adjustEnd: () => {
+        this.brushHud = null;
+        this.renderer.invalidateOverlay();
+      },
     };
   }
 
+  /** Lưới hiển thị và bám lưới (Cài đặt / menu Xem). */
+  get guides(): Readonly<GuideSettings> {
+    return this.guideSettings;
+  }
+
+  setGuides(patch: Partial<GuideSettings>): void {
+    const next = { ...this.guideSettings, ...patch };
+    next.gridSize = Math.min(512, Math.max(4, Math.round(next.gridSize)));
+    this.guideSettings = next;
+    this.renderer.invalidateOverlay();
+  }
+
+  /**
+   * Bám lưới: tool hình học nhận tọa độ làm tròn tới giao điểm lưới. Tool Chọn giữ điểm bấm (để
+   * hit-test đúng đối tượng) và dời theo bội số khoảng cách lưới.
+   */
+  private snapPointer(type: 'down' | 'move' | 'up', e: DocPointerEvent): void {
+    const { snap, gridSize: size } = this.guideSettings;
+    if (!snap || !SNAP_TOOLS.has(this.toolManager.activeId)) {
+      this.snapAnchor = null;
+      return;
+    }
+    if (this.toolManager.activeId === 'select') {
+      if (type === 'down') {
+        this.snapAnchor = { x: e.x, y: e.y };
+        return;
+      }
+      const anchor = this.snapAnchor;
+      if (!anchor) return;
+      e.x = anchor.x + Math.round((e.x - anchor.x) / size) * size;
+      e.y = anchor.y + Math.round((e.y - anchor.y) / size) * size;
+      if (type === 'up') this.snapAnchor = null;
+      return;
+    }
+    e.x = Math.round(e.x / size) * size;
+    e.y = Math.round(e.y / size) * size;
+  }
+
+  /** Nhóm option cọ của tool người dùng đã chọn (bỏ qua tool tạm thời như lấy màu khi giữ Alt). */
+  private hudGroup(): HudGroup | null {
+    const tool = this.toolManager.selectedId;
+    return tool === 'brush' ? 'brush' : tool === 'eraser' ? 'eraser' : null;
+  }
+
+  /**
+   * Hiện thoáng vòng tròn cỡ cọ tại con trỏ sau khi đổi cỡ/độ cứng bằng `[` `]` (mục 7.6).
+   */
+  flashBrushHud(): void {
+    const group = this.hudGroup();
+    const hover = this.hoverPoint;
+    if (!group || !hover || this.brushHud?.dragging) return;
+    const o = this.options.get(group);
+    this.brushHud = {
+      group,
+      origin: this.viewport.docToScreen(hover),
+      startSize: o.size,
+      startHardness: o.hardness,
+      dragging: false,
+    };
+    this.renderer.invalidateOverlay();
+    window.clearTimeout(this.brushHudTimer);
+    this.brushHudTimer = window.setTimeout(() => {
+      if (this.brushHud && !this.brushHud.dragging) this.brushHud = null;
+      this.renderer.invalidateOverlay();
+    }, BRUSH_HUD_FLASH_MS);
+  }
+
   private recordPointer(type: 'down' | 'move' | 'up', e: DocPointerEvent): void {
-    if (!this.recorder) return;
-    this.recorder.record({
+    if (!this.recorder && !this.blackBox) return;
+    this.record({
       type,
       x: e.x,
       y: e.y,

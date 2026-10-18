@@ -31,6 +31,19 @@ describe('MemoryBudget', () => {
     expect(budget.usedBytes).toBe(0);
   });
 
+  it('phần lịch sử chỉnh được trong Cài đặt (10–40%)', () => {
+    const budget = new MemoryBudget(config);
+    expect(budget.limitFor('history')).toBe(250);
+    budget.setHistoryShare(0.4);
+    expect(budget.limitFor('history')).toBe(400);
+    budget.setHistoryShare(0.9);
+    expect(budget.historyShareRatio).toBe(0.4);
+    budget.setHistoryShare(0);
+    expect(budget.limitFor('history')).toBe(100);
+    // Không ảnh hưởng phần của layer.
+    expect(budget.limitFor('layer')).toBe(600);
+  });
+
   it('báo cho listener khi dùng thay đổi', () => {
     const budget = new MemoryBudget(config);
     const listener = vi.fn();

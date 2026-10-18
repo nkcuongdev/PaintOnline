@@ -1,10 +1,18 @@
 import { navigate } from '@/app/router';
 import { formatShortcut } from '@/app/shared/shortcut';
 import { codec, initStorage, repo, storageReady } from '@/app/storage';
-import type { ID } from '@/engine/core/types';
+import type { Color, ID } from '@/engine/core/types';
 import { format, t } from '@/i18n';
 import { copyImage } from '@/services/io/clipboard';
 import { downloadBlob, safeFileName } from '@/services/io/download';
+import {
+  canSaveToFile,
+  ensureWritable,
+  isPickerAbort,
+  pickPaintFile,
+  writeFile,
+  type SaveFileHandle,
+} from '@/services/io/fileSave';
 import {
   EXPORT_EXTENSION,
   exportComposite,
@@ -16,15 +24,34 @@ import { platformFeatures } from '@/services/platform/features';
 import type { EncodedLayer, ProjectBundle } from '@/services/storage/projectRepo';
 import { isQuotaError } from '@/services/storage/db';
 import { RECORD_SCHEMA_VERSION } from '@/services/storage/schema';
-import { toast } from '@/stores/ui';
-import { createProject, getCurrentProject, type OpenProject } from './session';
+import { openDialog, toast } from '@/stores/ui';
+import { createProject, getCurrentProject, setProjectFileLink, type OpenProject } from './session';
 
 /**
  * Các thao tác cấp ứng dụng nối UI với Engine và services: tạo/mở ảnh, copy, export ảnh,
  * xuất/nhập .paint. Được gọi từ Command Registry, nút và trang chủ.
  */
 
-declare const __APP_VERSION__: string;
+/** Cạnh lớn nhất của ảnh mẫu để trích bảng màu. */
+const PALETTE_SAMPLE_SIDE = 64;
+
+/**
+ * Màu chủ đạo của ảnh vừa import (mục 7.6): thu nhỏ bằng createImageBitmap rồi trích trong Worker.
+ * Lỗi thì bỏ qua (bảng màu chỉ là tiện ích).
+ */
+export async function paletteOf(image: ImageBitmap): Promise<Color[]> {
+  try {
+    const scale = Math.min(1, PALETTE_SAMPLE_SIDE / Math.max(image.width, image.height, 1));
+    const sample = await createImageBitmap(image, {
+      resizeWidth: Math.max(1, Math.round(image.width * scale)),
+      resizeHeight: Math.max(1, Math.round(image.height * scale)),
+      resizeQuality: 'medium',
+    });
+    return await codec().palette(sample);
+  } catch {
+    return [];
+  }
+}
 
 /** Tạo ảnh trắng theo kích thước preset rồi mở editor. */
 export async function createBlankProject(width: number, height: number): Promise<boolean> {
@@ -77,6 +104,7 @@ export async function openImageAsProject(blob: Blob, source: 'file' | 'paste'): 
     const id = await createProject({
       name,
       mode: source === 'paste' ? 'screenshot' : 'paint',
+      palette: await paletteOf(decoded.bitmap),
       document: {
         width: decoded.width,
         height: decoded.height,
@@ -229,7 +257,7 @@ function projectFileModule() {
  */
 export async function exportProjectFile(
   projectId: ID,
-  options: { bakeRedactions: boolean },
+  options: { bakeRedactions: boolean; handle?: SaveFileHandle },
 ): Promise<boolean> {
   try {
     const open = getCurrentProject();
@@ -240,6 +268,20 @@ export async function exportProjectFile(
       appVersion: APP_VERSION,
       bakeRedactions: options.bakeRedactions,
     });
+    if (options.handle) {
+      // "Lưu ra file" (Chromium): ghi vào file đã chọn và gắn file với project cho Ctrl+S sau này.
+      await writeFile(options.handle, blob);
+      if (open?.id === projectId) {
+        await setProjectFileLink({
+          handle: options.handle,
+          name: options.handle.name,
+          bakeRedactions: options.bakeRedactions,
+        });
+      }
+      if (storageReady()) await repo.markExported(projectId).catch(() => undefined);
+      toast('success', format(t.fileSave.saved, { file: options.handle.name }));
+      return true;
+    }
     const file = safeFileName(bundle.meta.name, PAINT_EXTENSION);
     downloadBlob(blob, file);
     if (storageReady()) await repo.markExported(projectId).catch(() => undefined);
@@ -247,6 +289,53 @@ export async function exportProjectFile(
     return true;
   } catch {
     toast('error', t.projectFile.exportFailed);
+    return false;
+  }
+}
+
+/**
+ * "Lưu ra file .paint…" (mục 2, P2): Chromium mở hộp chọn nơi lưu ngay trong thao tác của người dùng
+ * rồi hỏi về vùng che (nếu có); trình duyệt khác tải file .paint về.
+ */
+export function saveProjectToFile(project: OpenProject): void {
+  if (!canSaveToFile()) {
+    openDialog({ kind: 'paintExport', projectId: project.id });
+    return;
+  }
+  pickPaintFile(safeFileName(project.name, '.paint'), t.fileSave.fileType).then(
+    (handle) => {
+      openDialog({ kind: 'paintExport', projectId: project.id, handle });
+    },
+    (error: unknown) => {
+      if (!isPickerAbort(error)) toast('error', t.fileSave.pickFailed);
+    },
+  );
+}
+
+/**
+ * Ctrl+S với project đã gắn file: ghi đè file .paint (sau lượt lưu vào IndexedDB). Hỏi lại quyền ghi
+ * nếu trình duyệt yêu cầu (sau khi tải lại trang). Trả false nếu không ghi được.
+ */
+export async function saveLinkedFile(project: OpenProject): Promise<boolean> {
+  const link = project.fileLink;
+  if (!link) return false;
+  const handle = link.handle as SaveFileHandle;
+  try {
+    if (!(await ensureWritable(handle))) {
+      toast('error', format(t.fileSave.permissionDenied, { file: link.name }));
+      return false;
+    }
+    const { buildProjectFile } = await projectFileModule();
+    const blob = await buildProjectFile(await bundleFromEditor(project), codec(), {
+      appVersion: APP_VERSION,
+      bakeRedactions: link.bakeRedactions,
+    });
+    await writeFile(handle, blob);
+    if (storageReady()) await repo.markExported(project.id).catch(() => undefined);
+    toast('success', format(t.fileSave.saved, { file: link.name }));
+    return true;
+  } catch {
+    toast('error', format(t.fileSave.writeFailed, { file: link.name }));
     return false;
   }
 }

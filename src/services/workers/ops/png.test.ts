@@ -14,7 +14,85 @@ function randomImage(width: number, height: number, seed = 1): Uint8ClampedArray
   return data;
 }
 
+/** PNG RGBA 8 bit dựng tay với bộ lọc chỉ định cho từng dòng (tham chiếu theo đặc tả PNG). */
+function pngWithFilters(
+  rgba: Uint8ClampedArray,
+  w: number,
+  h: number,
+  filters: number[],
+): Uint8Array {
+  const stride = w * 4;
+  const raw = new Uint8Array((stride + 1) * h);
+  const at = (y: number, i: number) => (y < 0 || i < 0 ? 0 : (rgba[y * stride + i] ?? 0));
+  for (let y = 0; y < h; y++) {
+    const f = filters[y % filters.length] ?? 0;
+    raw[y * (stride + 1)] = f;
+    for (let i = 0; i < stride; i++) {
+      const x = at(y, i);
+      const a = i >= 4 ? at(y, i - 4) : 0;
+      const b = at(y - 1, i);
+      const c = i >= 4 ? at(y - 1, i - 4) : 0;
+      const p = a + b - c;
+      const pr =
+        Math.abs(p - a) <= Math.abs(p - b) && Math.abs(p - a) <= Math.abs(p - c)
+          ? a
+          : Math.abs(p - b) <= Math.abs(p - c)
+            ? b
+            : c;
+      const pred = [0, a, b, (a + b) >> 1, pr][f] ?? 0;
+      raw[y * (stride + 1) + 1 + i] = (x - pred) & 0xff;
+    }
+  }
+  const table = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (bytes: Uint8Array) => {
+    let c = 0xffffffff;
+    for (const b of bytes) c = (table[(c ^ b) & 0xff] ?? 0) ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Uint8Array) => {
+    const out = new Uint8Array(12 + data.length);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, data.length);
+    out.set(new TextEncoder().encode(type), 4);
+    out.set(data, 8);
+    view.setUint32(8 + data.length, crc(out.subarray(4, 8 + data.length)));
+    return out;
+  };
+  const ihdr = new Uint8Array(13);
+  new DataView(ihdr.buffer).setUint32(0, w);
+  new DataView(ihdr.buffer).setUint32(4, h);
+  ihdr.set([8, 6, 0, 0, 0], 8);
+  const parts = [
+    new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlibSync(raw)),
+    chunk('IEND', new Uint8Array()),
+  ];
+  const total = new Uint8Array(parts.reduce((n, part) => n + part.length, 0));
+  let offset = 0;
+  for (const part of parts) {
+    total.set(part, offset);
+    offset += part.length;
+  }
+  return total;
+}
+
 describe('PNG RGBA cho pixel layer (ADR 0021)', () => {
+  it('giải mã đúng cả 5 bộ lọc dòng (None, Sub, Up, Average, Paeth), kể cả dòng đầu', () => {
+    const w = 37;
+    const h = 11;
+    const data = randomImage(w, h, 99);
+    data.fill(200, 0, w * 4); // dòng đầu khác 0 để kiểm tra nhánh "không có dòng trên"
+    for (const filters of [[0], [1], [2], [3], [4], [4, 3, 2, 1, 0], [3, 4, 0, 2, 1]]) {
+      const decoded = decodePng(pngWithFilters(data, w, h, filters));
+      expect(decoded?.data, `bộ lọc ${filters.join(',')}`).toEqual(data);
+    }
+  });
+
   it('mã hóa rồi giải mã giữ nguyên từng byte', () => {
     for (const [w, h] of [
       [1, 1],

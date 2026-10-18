@@ -9,6 +9,7 @@ const DURATION_MS = 4500;
 function ToastItem({ toast }: { toast: Toast }) {
   const dismiss = useUiStore((s) => s.dismissToast);
   useEffect(() => {
+    if (toast.persistent) return;
     const timer = window.setTimeout(
       () => {
         dismiss(toast.id);
@@ -38,6 +39,19 @@ function ToastItem({ toast }: { toast: Toast }) {
         aria-hidden="true"
       />
       <p className="flex-1">{toast.message}</p>
+      {toast.action && (
+        <button
+          type="button"
+          data-testid="toast-action"
+          onClick={() => {
+            dismiss(toast.id);
+            toast.action?.run();
+          }}
+          className="-my-0.5 shrink-0 rounded-md px-2 py-0.5 font-medium text-primary outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         type="button"
         aria-label={t.actions.close}

@@ -1,6 +1,7 @@
 import * as v from 'valibot';
 import type { ID, Rect } from '@/engine/core/types';
 import { redactPixelRect } from '@/engine/layers/objects/annotate';
+import { redactHalo, redactStrength } from '@/engine/layers/objects/redactEffect';
 import { opaqueColor, parseColor } from '@/engine/utils/color';
 import type { EncodedLayer, ProjectBundle } from '@/services/storage/projectRepo';
 import {
@@ -98,12 +99,18 @@ export function redactionFills(document: Pick<DocumentRecord, 'layers'>): Map<ID
       const r = redactPixelRect(obj);
       const { r: red, g: green, b: blue } = parseColor(opaqueColor(obj.color));
       const rgba: FillRect['rgba'] = [red, green, blue, 255];
+      // Khảm/làm mờ được nướng đúng kiểu (lưới khảm căn theo góc vùng che như khi hiển thị).
+      const effect =
+        obj.mode === 'solid'
+          ? { mode: 'solid' as const }
+          : { mode: obj.mode, strength: redactStrength(obj), halo: redactHalo(obj) };
       for (const below of document.layers.slice(0, index)) {
         if (below.kind !== 'raster' || !below.bounds) continue;
         const local = intersectLocal(r, below.bounds);
         if (!local) continue;
+        const full = { ...r, x: r.x - below.bounds.x, y: r.y - below.bounds.y };
         const list = fills.get(below.id) ?? [];
-        list.push({ ...local, rgba });
+        list.push({ ...local, rgba, ...effect, full });
         fills.set(below.id, list);
       }
     }

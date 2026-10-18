@@ -1,5 +1,5 @@
 import { t } from '@/i18n';
-import { useUiStore } from '@/stores/ui';
+import { isPanelVisible, setPanelVisible } from '@/app/editor/panelState';
 import type { AppCommand, CommandContext } from '../registry';
 
 /**
@@ -89,10 +89,9 @@ export const layerCommands: AppCommand[] = [
   },
   {
     id: 'view.togglePanel',
-    label: () => t.panel.expand,
+    label: () => (isPanelVisible() ? t.panel.collapse : t.panel.expand),
     run: () => {
-      const { rightPanel, setRightPanel } = useUiStore.getState();
-      setRightPanel({ open: !rightPanel.open });
+      setPanelVisible(!isPanelVisible());
     },
   },
 ];

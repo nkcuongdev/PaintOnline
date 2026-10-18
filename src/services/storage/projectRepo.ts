@@ -1,5 +1,5 @@
 import type { IDBPTransaction, StoreNames } from 'idb';
-import type { ID, Rect } from '@/engine/core/types';
+import type { Color, ID, Rect } from '@/engine/core/types';
 import { broadcast } from './channel';
 import type { Database, PaintDB } from './db';
 import {
@@ -10,6 +10,7 @@ import {
   type CheckpointRecord,
   type DocumentRecord,
   type LayerBlobRecord,
+  type ProjectFileLink,
   type ProjectMeta,
   type ProjectMode,
   type SessionRecord,
@@ -227,6 +228,8 @@ export class ProjectRepository {
         openedAt: meta?.openedAt ?? savedAt,
         lastExportedAt: meta?.lastExportedAt,
         deletedAt: meta?.deletedAt,
+        palette: meta?.palette,
+        fileLink: meta?.fileLink,
         schemaVersion: RECORD_SCHEMA_VERSION,
       });
       await this.db.faults?.beforeCommit?.({
@@ -418,6 +421,19 @@ export class ProjectRepository {
   /** Đổi chế độ giao diện của project (Paint ↔ Screenshot — mục 7.3). */
   async setMode(projectId: ID, mode: ProjectMode): Promise<void> {
     await this.updateMeta(projectId, (meta) => ({ ...meta, mode }));
+  }
+
+  /** Gắn/bỏ file .paint của "Lưu ra file" (Chromium). */
+  async setFileLink(projectId: ID, link: ProjectFileLink | null): Promise<void> {
+    await this.updateMeta(projectId, (meta) => {
+      const { fileLink: _old, ...rest } = meta;
+      return link ? { ...rest, fileLink: link } : rest;
+    });
+  }
+
+  /** Bảng màu project (mục 7.6) — không thuộc document, không có trong history. */
+  async setPalette(projectId: ID, palette: readonly Color[]): Promise<void> {
+    await this.updateMeta(projectId, (meta) => ({ ...meta, palette: [...palette] }));
   }
 
   async touchOpened(projectId: ID): Promise<void> {

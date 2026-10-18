@@ -93,7 +93,7 @@ export function ProjectCard({ project, now }: { project: ProjectMeta; now: numbe
         </Tooltip>
       )}
 
-      <DropdownMenu>
+      <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"

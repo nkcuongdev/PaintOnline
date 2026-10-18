@@ -1,5 +1,6 @@
 import { expose, transfer } from 'comlink';
 import type {
+  Color,
   FilterRequest,
   FloodFillRequest,
   FloodFillResult,
@@ -24,6 +25,7 @@ import {
 } from './ops/encode';
 import { applyFilter } from './ops/filters/pipeline';
 import { floodFill } from './ops/floodFill';
+import { paletteOfBitmap } from './ops/palette';
 import { bitmapAlphaBounds, buildMask } from './ops/selection';
 import { DEFAULT_UNZIP_LIMITS, unzipLimited, ZipError, zipEntries, type ZipEntry } from './ops/zip';
 
@@ -85,6 +87,11 @@ const api = {
   thumbnail(bitmap: ImageBitmap, maxSide: number): Promise<Blob> {
     requireCanvas();
     return encodeThumbnail(bitmap, maxSide);
+  },
+
+  palette(bitmap: ImageBitmap): Color[] {
+    requireCanvas();
+    return paletteOfBitmap(bitmap);
   },
 
   async decode(blob: Blob, options: DecodeOptions): Promise<ImageBitmap> {

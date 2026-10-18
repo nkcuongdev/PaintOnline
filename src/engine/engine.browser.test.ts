@@ -69,7 +69,7 @@ describe('Nghiệm thu GĐ1: 100 nét vẽ rồi undo/redo đúng từng pixel',
       expect(hashPixels(editor.readPixels()), `redo tới trạng thái ${String(k)}`).toBe(states[k]);
     }
     expect(diffPixels(editor.readPixels(), final)).toBe(0);
-  }, 60_000);
+  }, 180_000); // ~14 s khi chạy riêng; WebKit chậm 4–5 lần khi 3 engine chạy song song
 
   it('50 vòng undo/redo với pixel bán trong suốt không làm lệch màu (alpha nhân trước — mục 10.1)', () => {
     const editor = track(createTestEditor(300, 300));

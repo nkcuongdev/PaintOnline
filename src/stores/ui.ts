@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { AdjustmentKind } from '@/app/editor/adjustments';
 import type { PaintTargetChoice, PaintTargetKind, ToolId } from '@/engine/core/types';
+import type { SaveFileHandle } from '@/services/io/fileSave';
 
 /**
  * uiStore — state thuần UI (mục 4.1): theme, panel, dialog, thông báo aria-live.
@@ -46,12 +47,14 @@ export interface CanvasMenuRequest {
 /** Hộp thoại cấp ứng dụng đang mở (mỗi lúc một hộp thoại). */
 export type AppDialog =
   | { kind: 'export' }
-  | { kind: 'paintExport'; projectId: string }
+  | { kind: 'paintExport'; projectId: string; handle?: SaveFileHandle }
   | { kind: 'rename'; projectId: string; name: string }
   | { kind: 'quota' }
   | { kind: 'newImage' }
   | { kind: 'resizeImage' }
-  | { kind: 'canvasSize' };
+  | { kind: 'canvasSize' }
+  | { kind: 'shortcuts' }
+  | { kind: 'settings' };
 
 /** Panel phải của editor (mục 7.2): tab Layers, History; thu gọn được. */
 export type RightPanelTab = 'layers' | 'history' | 'beautify';
@@ -87,10 +90,24 @@ function saveRightPanel(state: RightPanelState): void {
   }
 }
 
+/** Nút hành động trong toast ("Tải lại" khi có bản mới…). */
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export interface Toast {
   id: number;
   kind: ToastKind;
   message: string;
+  action?: ToastAction;
+  /** Không tự đóng (cần người dùng trả lời). */
+  persistent?: boolean;
+}
+
+export interface ToastOptions {
+  action?: ToastAction;
+  persistent?: boolean;
 }
 
 /** Số toast hiển thị cùng lúc. */
@@ -108,12 +125,23 @@ export interface UiState {
   rightPanel: RightPanelState;
   /** Bảng điều chỉnh đang mở (loại bảng; phiên filter nằm trong Engine). */
   adjustment: AdjustmentKind | null;
+  /** Command Palette (Ctrl+K — mục 7.6). */
+  paletteOpen: boolean;
+  /** Zen mode (`\` — mục 7.6): ẩn toàn bộ UI của editor, chỉ còn canvas và nút thoát. */
+  zen: boolean;
+  /** Tab đang ở chế độ toàn màn hình (Fullscreen API — đồng bộ theo `fullscreenchange`). */
+  fullscreen: boolean;
+  /**
+   * Khung nhìn laptop 1024–1279 px (mục 7.5): panel phải là ngăn trượt nổi; trạng thái mở riêng,
+   * không lưu, tự đóng khi vẽ.
+   */
+  panelOverlayOpen: boolean;
 
   setThemePreference: (preference: ThemePreference) => void;
   setSystemPrefersDark: (prefersDark: boolean) => void;
   announce: (message: string) => void;
   /** Hiện thông báo ngắn ("Đã copy", lỗi mở ảnh…); trả về id để đóng sớm. */
-  pushToast: (kind: ToastKind, message: string) => number;
+  pushToast: (kind: ToastKind, message: string, options?: ToastOptions) => number;
   dismissToast: (id: number) => void;
   setPaintTargetRequest: (request: PaintTargetRequest | null) => void;
   openCanvasMenu: (menu: Omit<CanvasMenuRequest, 'id'>) => void;
@@ -122,6 +150,10 @@ export interface UiState {
   closeDialog: () => void;
   setRightPanel: (patch: Partial<RightPanelState>) => void;
   setAdjustment: (kind: AdjustmentKind | null) => void;
+  setPaletteOpen: (open: boolean) => void;
+  setZen: (zen: boolean) => void;
+  setFullscreen: (fullscreen: boolean) => void;
+  setPanelOverlayOpen: (open: boolean) => void;
 }
 
 let toastSeq = 0;
@@ -136,6 +168,10 @@ export const useUiStore = create<UiState>()((set) => ({
   dialog: null,
   rightPanel: loadRightPanel(),
   adjustment: null,
+  paletteOpen: false,
+  zen: false,
+  fullscreen: false,
+  panelOverlayOpen: false,
 
   setThemePreference: (themePreference) => {
     set({ themePreference });
@@ -146,13 +182,14 @@ export const useUiStore = create<UiState>()((set) => ({
   announce: (message) => {
     set((state) => ({ announcement: { id: (state.announcement?.id ?? 0) + 1, message } }));
   },
-  pushToast: (kind, message) => {
+  pushToast: (kind, message, options = {}) => {
     const id = ++toastSeq;
     set((state) => ({
       // Cùng nội dung thì thay thế, không xếp chồng.
-      toasts: [...state.toasts.filter((t) => t.message !== message), { id, kind, message }].slice(
-        -MAX_TOASTS,
-      ),
+      toasts: [
+        ...state.toasts.filter((t) => t.message !== message),
+        { id, kind, message, ...options },
+      ].slice(-MAX_TOASTS),
     }));
     return id;
   },
@@ -177,6 +214,18 @@ export const useUiStore = create<UiState>()((set) => ({
   setAdjustment: (adjustment) => {
     set({ adjustment });
   },
+  setPaletteOpen: (paletteOpen) => {
+    set({ paletteOpen });
+  },
+  setZen: (zen) => {
+    set({ zen });
+  },
+  setFullscreen: (fullscreen) => {
+    set({ fullscreen });
+  },
+  setPanelOverlayOpen: (panelOverlayOpen) => {
+    set({ panelOverlayOpen });
+  },
   setRightPanel: (patch) => {
     set((state) => {
       const rightPanel = { ...state.rightPanel, ...patch };
@@ -191,8 +240,8 @@ export function openDialog(dialog: AppDialog): void {
 }
 
 /** Gọi từ ngoài React (bridge, handler sự kiện). */
-export function toast(kind: ToastKind, message: string): number {
-  return useUiStore.getState().pushToast(kind, message);
+export function toast(kind: ToastKind, message: string, options?: ToastOptions): number {
+  return useUiStore.getState().pushToast(kind, message, options);
 }
 
 export function selectResolvedTheme(state: UiState): ResolvedTheme {

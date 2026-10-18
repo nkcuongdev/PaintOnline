@@ -9,9 +9,16 @@ import {
   settings,
   storageReady,
 } from '@/app/storage';
-import { Editor } from '@/engine/core/Editor';
+import type { Editor } from '@/engine/core/Editor';
 import type { DocumentSpec } from '@/engine/core/Document';
-import type { ID, NoticeCode, ToolId, ToolOptionsState, ViewData } from '@/engine/core/types';
+import type {
+  Color,
+  ID,
+  NoticeCode,
+  ToolId,
+  ToolOptionsState,
+  ViewData,
+} from '@/engine/core/types';
 import { format, t } from '@/i18n';
 import { Autosave } from '@/services/storage/autosave';
 import { broadcast, onChannelMessage, TAB_ID } from '@/services/storage/channel';
@@ -28,7 +35,9 @@ import {
   savedLayerRevs,
 } from '@/services/storage/restore';
 import { hasUnsavedWork, type SaveStatus } from '@/services/storage/saveStatus';
-import type { ProjectMode } from '@/services/storage/schema';
+import { recordError, setInputProvider } from '@/services/diagnostics/errorLog';
+import { useSettingsStore } from '@/stores/settings';
+import type { ProjectMode, ProjectFileLink } from '@/services/storage/schema';
 import { detectMemoryConfig } from '@/services/platform/deviceTier';
 import { platformFeatures } from '@/services/platform/features';
 import { sharedWorkerPool } from '@/services/workers/pool';
@@ -46,6 +55,10 @@ export interface OpenProject {
   id: string;
   name: string;
   mode: ProjectMode;
+  /** Bảng màu project (màu chủ đạo của ảnh import gần nhất — mục 7.6). */
+  palette: readonly Color[];
+  /** File .paint gắn với project ("Lưu ra file" — Ctrl+S ghi đè vào đó). */
+  fileLink: ProjectFileLink | null;
   editor: Editor;
   createdAt: number;
   autosave: Autosave | null;
@@ -67,7 +80,12 @@ function emit(): void {
 /** Tool options + màu mới nhất trong tab (mở project kế tiếp dùng tiếp). */
 let latestOptions: Partial<ToolOptionsState> | null = null;
 
-function createEditor(): Editor {
+/**
+ * Canvas Engine nằm trong chunk riêng, tải khi tạo/mở project đầu tiên — trang chủ khởi động
+ * không phải tải engine (mục 11.3: JS khởi động ≤ 250 KB gzip).
+ */
+async function createEditor(): Promise<Editor> {
+  const { Editor } = await import('@/engine/core/Editor');
   const editor = new Editor({
     memory: detectMemoryConfig(),
     platform: platformFeatures,
@@ -77,7 +95,13 @@ function createEditor(): Editor {
       format(kind === 'raster' ? t.layers.numbered : t.layers.annotationNumbered, { n }),
     layerCopyName: (name) => format(t.layers.copyName, { name }),
     backgroundName: () => t.layers.background,
+    reportError: (error) => {
+      recordError('engine', error);
+    },
   });
+  const prefs = useSettingsStore.getState();
+  editor.setHistoryShare(prefs.historyShare);
+  editor.setGuides({ grid: prefs.view.grid, gridSize: prefs.view.gridSize, snap: prefs.view.snap });
   const policy = settings.value.paintPolicy;
   if (policy?.draw) editor.layers.setPaintPolicy('draw', policy.draw);
   if (policy?.modify) editor.layers.setPaintPolicy('modify', policy.modify);
@@ -136,6 +160,8 @@ function attach(
       lastCheckpointAt,
       onStatus: (status) => {
         if (current === project) setStatus(status);
+        // Lỗi ghi (không phải hết dung lượng): ghi nhật ký lỗi cục bộ để chẩn đoán (mục 10.3).
+        if (status.kind === 'error') recordError('storage', `autosave: ${status.reason}`);
       },
       onSaved: () => {
         void ensurePersistence();
@@ -148,6 +174,7 @@ function attach(
       },
     });
     project.autosave = autosave;
+    autosave.setAutomatic(useSettingsStore.getState().autosave);
     offs.push(
       editor.on('documentChanged', () => {
         autosave.notifyChange();
@@ -182,6 +209,22 @@ function attach(
   }
   editor.setReadOnly(project.readOnly);
   useProjectStore.setState({ readOnly: project.readOnly, takingOver: false });
+  // Cài đặt đổi khi đang mở project: áp dụng ngay.
+  offs.push(
+    useSettingsStore.subscribe((state, prev) => {
+      if (state.autosave !== prev.autosave) project.autosave?.setAutomatic(state.autosave);
+      if (state.historyShare !== prev.historyShare) editor.setHistoryShare(state.historyShare);
+      if (state.view !== prev.view) {
+        const { grid, gridSize, snap } = state.view;
+        editor.setGuides({ grid, gridSize, snap });
+      }
+    }),
+  );
+  // Lỗi xảy ra khi đang mở project kèm các thao tác gần nhất (mục 10.3).
+  setInputProvider(() => editor.recentInput());
+  offs.push(() => {
+    setInputProvider(null);
+  });
   detach = () => {
     for (const off of offs) off();
   };
@@ -208,13 +251,14 @@ export interface OpenProjectInit {
   name: string;
   mode?: ProjectMode;
   document: DocumentSpec;
+  palette?: readonly Color[];
 }
 
 /** Tạo editor + document, lưu ngay lần đầu. Trả về id, hoặc null nếu bị từ chối. */
 export async function createProject(init: OpenProjectInit): Promise<string | null> {
   await initStorage();
   await closeCurrentProject({ discardUnsaved: true });
-  const editor = createEditor();
+  const editor = await createEditor();
   if (!createDocumentIn(editor, init.document)) return null;
   // Ảnh dán từ clipboard mở ở chế độ chú thích: Arrow được chọn sẵn (mục 7.4).
   if (init.mode === 'screenshot') editor.tools.setActive('arrow');
@@ -225,6 +269,8 @@ export async function createProject(init: OpenProjectInit): Promise<string | nul
     id,
     name: init.name,
     mode: init.mode ?? 'paint',
+    palette: init.palette ?? [],
+    fileLink: null,
     editor,
     createdAt: Date.now(),
     autosave: null,
@@ -236,7 +282,11 @@ export async function createProject(init: OpenProjectInit): Promise<string | nul
   emit();
   void sessionTracker.begin(id, null, editor.tools.selected);
   // Lưu ngay để project xuất hiện trong danh sách và còn nguyên khi tải lại trang.
-  void project.autosave?.saveNow();
+  void project.autosave?.saveNow().then((saved) => {
+    if (saved && project.palette.length > 0) {
+      void repo.setPalette(id, project.palette).catch(() => undefined);
+    }
+  });
   return id;
 }
 
@@ -305,7 +355,7 @@ async function doLoad(id: ID, givenLock: ProjectLock | undefined): Promise<LoadR
   const session = previous?.projectId === id ? previous : null;
   const spec = documentSpecFromRecord(record, images, id);
 
-  const editor = createEditor();
+  const editor = await createEditor();
   const ok = createDocumentIn(editor, spec, session?.viewport ?? record.viewport);
   if (!ok) {
     lock?.release();
@@ -321,6 +371,8 @@ async function doLoad(id: ID, givenLock: ProjectLock | undefined): Promise<LoadR
     id,
     name: meta.name,
     mode: meta.mode,
+    palette: meta.palette ?? [],
+    fileLink: meta.fileLink ?? null,
     editor,
     createdAt: meta.createdAt,
     autosave: null,
@@ -465,6 +517,28 @@ export async function setProjectMode(mode: ProjectMode): Promise<void> {
 }
 
 /** Còn thay đổi có thể mất nếu đóng tab ngay. */
+/** Gắn file .paint với project đang mở (lần "Lưu ra file" đầu tiên). */
+export async function setProjectFileLink(link: ProjectFileLink | null): Promise<void> {
+  const project = current;
+  if (!project) return;
+  project.fileLink = link;
+  emit();
+  if (storageReady() && !project.readOnly) {
+    await repo.setFileLink(project.id, link).catch(() => undefined);
+  }
+}
+
+/** Đặt bảng màu project (ảnh vừa dán/thả vào editor — mục 7.6). */
+export async function setProjectPalette(palette: readonly Color[]): Promise<void> {
+  const project = current;
+  if (!project || palette.length === 0) return;
+  project.palette = palette;
+  emit();
+  if (storageReady() && !project.readOnly) {
+    await repo.setPalette(project.id, palette).catch(() => undefined);
+  }
+}
+
 export function hasUnsavedChanges(): boolean {
   if (!current) return false;
   const status = useProjectStore.getState().saveStatus;
@@ -556,15 +630,21 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
+const NO_PALETTE: readonly Color[] = [];
+
 let snapshot: {
   project: OpenProject | null;
   name: string | null;
   mode: ProjectMode | null;
+  palette: readonly Color[];
+  fileLink: ProjectFileLink | null;
   retained: boolean;
 } = {
   project: null,
   name: null,
   mode: null,
+  palette: [],
+  fileLink: null,
   retained: false,
 };
 
@@ -573,12 +653,16 @@ function getSnapshot() {
     snapshot.project !== current ||
     snapshot.name !== (current?.name ?? null) ||
     snapshot.mode !== (current?.mode ?? null) ||
+    snapshot.palette !== (current?.palette ?? NO_PALETTE) ||
+    snapshot.fileLink !== (current?.fileLink ?? null) ||
     snapshot.retained !== retained
   ) {
     snapshot = {
       project: current,
       name: current?.name ?? null,
       mode: current?.mode ?? null,
+      palette: current?.palette ?? NO_PALETTE,
+      fileLink: current?.fileLink ?? null,
       retained,
     };
   }
@@ -598,6 +682,16 @@ export function useCurrentProjectName(): string | null {
 /** Chế độ giao diện của project đang mở (đổi khi chuyển Paint ↔ Screenshot). */
 export function useProjectMode(): ProjectMode {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot).mode ?? 'paint';
+}
+
+/** File .paint gắn với project đang mở ("Lưu ra file"). */
+export function useProjectFileLink(): ProjectFileLink | null {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot).fileLink;
+}
+
+/** Bảng màu project đang mở. */
+export function useProjectPalette(): readonly Color[] {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot).palette;
 }
 
 export function useRetainedProject(): OpenProject | null {

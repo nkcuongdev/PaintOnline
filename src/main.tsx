@@ -7,13 +7,15 @@ import './styles/globals.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from '@/app/App';
+import { registerServiceWorker } from '@/app/pwa';
 import { installSessionLifecycle } from '@/app/editor/session';
 import { initStorage } from '@/app/storage';
 import { startThemeSync } from '@/app/theme';
+import { installErrorCapture } from '@/services/diagnostics/errorLog';
 import { installBrowserGuards } from '@/services/platform/browserGuards';
 
-// Service worker (PWA) được đăng ký ở đây từ GĐ8 — lớp bổ sung, không bắt buộc.
-
+// Nhật ký lỗi cục bộ (mục 10.3): bắt lỗi chưa xử lý ngay từ đầu.
+installErrorCapture();
 startThemeSync();
 installBrowserGuards();
 // IndexedDB: mở kết nối, đọc cài đặt và phiên trước (khôi phục), dọn thùng rác quá hạn (mục 6.6).
@@ -35,3 +37,7 @@ createRoot(rootElement).render(
     <App />
   </StrictMode>,
 );
+
+// Service worker (PWA — ADR 0011): lớp bổ sung, đăng ký sau khi trang tải xong.
+if (document.readyState === 'complete') registerServiceWorker();
+else window.addEventListener('load', registerServiceWorker, { once: true });

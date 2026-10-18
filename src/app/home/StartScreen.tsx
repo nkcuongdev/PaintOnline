@@ -5,6 +5,7 @@ import {
   openImageAsProject,
 } from '@/app/editor/actions';
 import { refreshProjects, watchProjects } from '@/app/projects';
+import { FullscreenButton, PaletteButton, SettingsButton } from '@/app/layout/AppButtons';
 import { TopBar } from '@/app/layout/TopBar';
 import { AppLogo } from '@/app/shared/AppLogo';
 import { ThemeMenu } from '@/app/shared/ThemeMenu';
@@ -59,7 +60,17 @@ export function StartScreen() {
 
   return (
     <div className="flex h-full flex-col" data-testid="start-screen">
-      <TopBar start={<AppLogo className="px-1.5" />} end={<ThemeMenu />} />
+      <TopBar
+        start={<AppLogo className="px-1.5" />}
+        center={<PaletteButton />}
+        end={
+          <>
+            <FullscreenButton />
+            <SettingsButton />
+            <ThemeMenu />
+          </>
+        }
+      />
 
       <main id="main" tabIndex={-1} className="flex-1 overflow-y-auto outline-none">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-8 lg:py-12">

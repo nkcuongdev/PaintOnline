@@ -47,3 +47,9 @@ nhánh xử lý riêng cho Firefox. Trường hợp này là **ngoại lệ đã
 Có Below/Above cache: nét đầu sau khi mở M chỉ còn ~1 s chậm (7–17 khung/giây), khung dài nhất
 133 ms, độ trễ p95 21–33 ms, frame p95 16,7 ms — **đạt mọi ngưỡng vẽ bắt buộc của M**. Không cần
 phương án 2 hay 3. Vẫn đo lại ở GĐ9 (docs/perf-baseline.md, GĐ4).
+
+## Đo lại ở GĐ9 (GĐ8+9 gộp — ADR 0028)
+
+Firefox 157, `HEADED=1`, kịch bản M (3840 × 2160 × 5), 3 lần: khung dài nhất 83–150 ms, độ trễ p95
+19–44 ms, frame p95 16,7 ms — **đạt mọi ngưỡng vẽ bắt buộc**. Giai đoạn khởi động chỉ còn 1–2 giây
+đầu với vài khung 100–150 ms. Ngoại lệ này không còn ảnh hưởng nghiệm thu; giữ ADR để ghi lịch sử.

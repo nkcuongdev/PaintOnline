@@ -2,6 +2,7 @@ import { TriangleAlert } from 'lucide-react';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { t } from '@/i18n';
+import { recordError } from '@/services/diagnostics/errorLog';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -11,9 +12,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-/**
- * Chặn lỗi render để không trắng trang. Nhật ký lỗi cục bộ (mục 10.3) được nối vào đây ở GĐ9.
- */
+/** Chặn lỗi render để không trắng trang; lỗi được ghi vào nhật ký lỗi cục bộ (mục 10.3). */
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   override state: ErrorBoundaryState = { error: null };
 
@@ -23,6 +22,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('[Paint Online] Lỗi giao diện', error, info.componentStack);
+    recordError('react', error);
   }
 
   override render(): ReactNode {

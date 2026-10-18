@@ -35,7 +35,7 @@ export class DocumentCommand implements Command {
       layers: [...doc.layers],
       activeLayerId: doc.activeLayerId,
     };
-    restore(this.created());
+    swap(this.removed(), this.created());
     apply(doc, this.after);
     this.applied = true;
   }
@@ -43,7 +43,7 @@ export class DocumentCommand implements Command {
   undo(doc: Document): void {
     const before = this.before;
     if (!before) return;
-    restore(this.removed());
+    swap(this.created(), this.removed());
     apply(doc, before);
     this.applied = false;
   }
@@ -93,4 +93,27 @@ function restore(layers: readonly Layer[]): void {
   for (const layer of layers) {
     if (layer.kind === 'raster') layer.surface.unarchive();
   }
+}
+
+function setCategory(layers: readonly Layer[], category: 'layer' | 'temp'): void {
+  for (const layer of layers) {
+    if (layer.kind === 'raster') layer.surface.recategorize(category);
+  }
+}
+
+/**
+ * Đổi bộ layer của document: bộ sắp rời document chuyển sang hạng mục `temp` TRƯỚC khi giải nén bộ
+ * quay lại — phần 60% dành cho layer không chặn undo/redo của biến đổi ảnh lớn (đo ở GĐ9: undo
+ * Canvas size trên L bị từ chối khi layer cũ đã được nén lúc rảnh). Vẫn trong tổng ngân sách; bộ
+ * rời document được nén lúc rảnh như trước.
+ */
+function swap(leaving: readonly Layer[], entering: readonly Layer[]): void {
+  setCategory(leaving, 'temp');
+  try {
+    restore(entering);
+  } catch (error) {
+    setCategory(leaving, 'layer');
+    throw error;
+  }
+  setCategory(entering, 'layer');
 }

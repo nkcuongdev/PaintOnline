@@ -74,6 +74,11 @@ function getHash(): string {
   return window.location.hash;
 }
 
+/** Route hiện tại (ngoài React: lệnh, Command Palette). */
+export function readRoute(): Route {
+  return parseHash(window.location.hash);
+}
+
 /** Route hiện tại, cập nhật khi hash đổi. */
 export function useRoute(): Route {
   const hash = useSyncExternalStore(subscribe, getHash, () => '');

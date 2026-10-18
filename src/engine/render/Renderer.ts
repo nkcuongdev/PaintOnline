@@ -18,6 +18,8 @@ export interface Appearance {
   /** CSS box-shadow của "tờ giấy" document. */
   sheetShadow: string;
   pixelGrid: string;
+  /** Màu lưới (Grid — không vào ảnh xuất). */
+  guideGrid?: string;
 }
 
 const DEFAULT_APPEARANCE: Appearance = {
@@ -32,6 +34,9 @@ const CHECKER_CELL = 8;
 /** Từ mức zoom này tắt làm mịn ảnh để thấy rõ pixel; lưới pixel từ mức kế (mục 5.1). */
 const PIXELATED_ZOOM = 4;
 const PIXEL_GRID_ZOOM = 8;
+/** Lưới (Grid) chỉ vẽ khi hai đường cách nhau ít nhất chừng này CSS px. */
+const MIN_GRID_SPACING = 6;
+const DEFAULT_GUIDE_GRID = 'rgb(59 91 219 / 0.35)';
 
 export interface RendererSource {
   document(): Document | null;
@@ -44,6 +49,8 @@ export interface RendererSource {
   /** Đối tượng vector: môi trường vẽ + bản nháp đang kéo/tạo. */
   objects(): ObjectRenderState;
   drawToolOverlay(overlay: OverlayContext): void;
+  /** Lưới hiển thị (null = tắt). */
+  grid(): number | null;
 }
 
 export interface FrameStats {
@@ -408,6 +415,8 @@ export class Renderer {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const doc = this.source.document();
     if (doc && this.viewport.zoom >= PIXEL_GRID_ZOOM) this.paintPixelGrid(ctx, doc);
+    const grid = this.source.grid();
+    if (doc && grid !== null) this.paintGuideGrid(ctx, doc, grid);
     this.source.drawToolOverlay({ ctx, viewport: this.viewport, hover: this.source.hover() });
   }
 
@@ -430,6 +439,37 @@ export class Renderer {
       ctx.lineTo(sx, bottom);
     }
     for (let y = visible.y; y <= visible.y + visible.height; y++) {
+      const sy = Math.round(vp.docToScreen({ x: 0, y }).y * vp.dpr) / vp.dpr + px / 2;
+      ctx.moveTo(left, sy);
+      ctx.lineTo(right, sy);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Lưới theo khoảng cách `size` px ảnh; ẩn khi các đường quá sát nhau trên màn hình. */
+  private paintGuideGrid(ctx: Ctx2D, doc: Document, size: number): void {
+    const vp = this.viewport;
+    if (size * vp.zoom < MIN_GRID_SPACING) return;
+    const visible = intersectRect(roundOutRect(vp.visibleDocRect()), doc.bounds);
+    if (isEmptyRect(visible)) return;
+    const px = 1 / vp.dpr;
+    const top = vp.docToScreen({ x: 0, y: visible.y }).y;
+    const bottom = vp.docToScreen({ x: 0, y: visible.y + visible.height }).y;
+    const left = vp.docToScreen({ x: visible.x, y: 0 }).x;
+    const right = vp.docToScreen({ x: visible.x + visible.width, y: 0 }).x;
+    ctx.save();
+    ctx.strokeStyle = this.appearance.guideGrid ?? DEFAULT_GUIDE_GRID;
+    ctx.lineWidth = px;
+    ctx.beginPath();
+    const firstX = Math.ceil(visible.x / size) * size;
+    for (let x = firstX; x <= visible.x + visible.width; x += size) {
+      const sx = Math.round(vp.docToScreen({ x, y: 0 }).x * vp.dpr) / vp.dpr + px / 2;
+      ctx.moveTo(sx, top);
+      ctx.lineTo(sx, bottom);
+    }
+    const firstY = Math.ceil(visible.y / size) * size;
+    for (let y = firstY; y <= visible.y + visible.height; y += size) {
       const sy = Math.round(vp.docToScreen({ x: 0, y }).y * vp.dpr) / vp.dpr + px / 2;
       ctx.moveTo(left, sy);
       ctx.lineTo(right, sy);

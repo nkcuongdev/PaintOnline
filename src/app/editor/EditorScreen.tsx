@@ -4,13 +4,18 @@ import {
   Copy,
   Download,
   Ellipsis,
+  EyeOff,
   FileArchive,
+  HardDriveDownload,
+  Keyboard,
   LoaderCircle,
   Lock,
+  Maximize,
   Paintbrush,
   PanelRightOpen,
   Redo2,
   Save,
+  Settings,
   Undo2,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -19,7 +24,10 @@ import { AdjustmentsPanel } from '@/app/dialogs/AdjustmentsPanel';
 import { CanvasSizeDialog, ResizeImageDialog } from '@/app/dialogs/ImageSizeDialogs';
 import { QuotaDialog } from '@/app/dialogs/QuotaDialog';
 import { connectEditor } from '@/app/engine-bridge';
+import { FullscreenButton, PaletteButton } from '@/app/layout/AppButtons';
 import { TopBar } from '@/app/layout/TopBar';
+import { runCommand } from '@/commands';
+import { getGlobalCommand } from '@/commands/global';
 import { navigate } from '@/app/router';
 import { AppMark } from '@/app/shared/AppLogo';
 import { IconButton } from '@/app/shared/IconButton';
@@ -42,9 +50,15 @@ import { shortcutKeys } from '@/app/shared/shortcut';
 import { platformFeatures } from '@/services/platform/features';
 import { useDocumentStore } from '@/stores/document';
 import { useProjectStore } from '@/stores/project';
+import { useSettingsStore } from '@/stores/settings';
+import { cn } from '@/lib/utils';
 import { openDialog, toast, useUiStore } from '@/stores/ui';
 import { copyProjectImage, downloadProjectImage } from './actions';
 import { CanvasContextMenu } from './CanvasContextMenu';
+import { MiniToolbar } from './MiniToolbar';
+import { RULER_SIZE } from './rulerTicks';
+import { Rulers } from './Rulers';
+import { ViewMenu } from './ViewMenu';
 import { CanvasView } from './CanvasView';
 import { ImageDropZone } from './ImageDropZone';
 import { AdjustMenu } from './AdjustMenu';
@@ -52,6 +66,7 @@ import { ImageMenu } from './ImageMenu';
 import { EditorStatusBar } from './EditorStatusBar';
 import { historyLabel } from './historyLabel';
 import { OptionsBar } from './OptionsBar';
+import { setPanelVisible, usePanelVisibility } from './panelState';
 import { RightPanel } from './panels/RightPanel';
 import { PaintTargetDialog } from './PaintTargetDialog';
 import { ProjectMissing } from './ProjectMissing';
@@ -64,6 +79,7 @@ import {
   takeOverEditing,
   useCurrentProject,
   useCurrentProjectName,
+  useProjectFileLink,
   useProjectMode,
   type LoadResult,
   type OpenProject,
@@ -170,13 +186,44 @@ function ScreenshotActions({ project }: { project: OpenProject }) {
   );
 }
 
+/** Nút nổi duy nhất trong Zen mode (mục 7.6). */
+function ZenExit() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="zen-exit"
+          className="surface-glass absolute top-3 right-3 z-20 shadow-island"
+          onClick={() => {
+            useUiStore.getState().setZen(false);
+          }}
+        >
+          <EyeOff />
+          {t.view.zenExit}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {format(t.view.zenHint, { key: shortcutText('\\') })}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function Editor({ project }: { project: OpenProject }) {
   const { editor } = project;
   const history = useDocumentStore((s) => s.history);
   const name = useCurrentProjectName() ?? project.name;
   const status = useProjectStore((s) => s.saveStatus);
   const readOnly = useProjectStore((s) => s.readOnly);
-  const panelOpen = useUiStore((s) => s.rightPanel.open);
+  const { docked: panelDocked, visible: panelOpen } = usePanelVisibility();
+  // Zen mode (mục 7.6): chỉ còn canvas và nút thoát.
+  const zen = useUiStore((s) => s.zen);
+  const fullscreen = useUiStore((s) => s.fullscreen);
+  const fileLink = useProjectFileLink();
+  // Thước đo (mục 2, P2): ẩn trong Zen mode.
+  const rulers = useSettingsStore((s) => s.view.rulers) && !zen;
   // Chế độ Screenshot (mục 7.3): tool island rút gọn, Copy + Tải xuống nổi bật, panel Làm đẹp.
   const mode = useProjectMode();
   const screenshot = mode === 'screenshot';
@@ -197,7 +244,9 @@ function Editor({ project }: { project: OpenProject }) {
     const chrome = chromeRef.current;
     if (!chrome) return;
     const update = () => {
-      editor.viewport.setInsets({ top: chrome.offsetTop + chrome.offsetHeight });
+      // Tọa độ canvas: khi bật thước, canvas lùi xuống RULER_SIZE so với vùng làm việc.
+      const top = chrome.offsetTop + chrome.offsetHeight - (rulers ? RULER_SIZE : 0);
+      editor.viewport.setInsets({ top: zen ? 0 : Math.max(0, top) });
     };
     update();
     const observer = new ResizeObserver(update);
@@ -205,7 +254,28 @@ function Editor({ project }: { project: OpenProject }) {
     return () => {
       observer.disconnect();
     };
-  }, [editor]);
+  }, [editor, zen, rulers]);
+
+  // Laptop (mục 7.5): ngăn panel nổi tự đóng khi bắt đầu vẽ trên canvas.
+  useEffect(() => {
+    if (panelDocked || !panelOpen) return;
+    const host = document.querySelector('[data-testid="canvas-view"]');
+    const close = () => {
+      setPanelVisible(false);
+    };
+    host?.addEventListener('pointerdown', close);
+    return () => {
+      host?.removeEventListener('pointerdown', close);
+    };
+  }, [panelDocked, panelOpen]);
+
+  // Rời editor: thoát Zen mode (trang chủ không có nút thoát).
+  useEffect(
+    () => () => {
+      useUiStore.getState().setZen(false);
+    },
+    [],
+  );
 
   const undoLabel = historyLabel(history.undoLabel);
   const redoLabel = historyLabel(history.redoLabel);
@@ -216,195 +286,264 @@ function Editor({ project }: { project: OpenProject }) {
       data-testid="editor-screen"
       data-project-id={project.id}
       data-mode={mode}
+      data-zen={zen || undefined}
     >
-      <TopBar
-        start={
-          <>
-            <IconButton
-              label={t.editor.backToHome}
-              icon={<ArrowLeft />}
-              data-testid="back-to-home"
-              onClick={() => {
-                navigate({ name: 'home' });
-              }}
-            />
-            <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5" />
-            <AppMark className="mx-1 size-6 shrink-0" />
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="min-w-0 truncate rounded-md px-1.5 py-1 font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                  data-testid="project-name"
-                  aria-label={`${t.editor.renameLabel}: ${name}`}
-                  onClick={() => {
-                    openDialog({ kind: 'rename', projectId: project.id, name });
-                  }}
-                >
-                  {name}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t.editor.renameLabel}</TooltipContent>
-            </Tooltip>
-            <SaveStatusIndicator project={project} />
-          </>
-        }
-        center={
-          <>
-            <IconButton
-              label={undoLabel ? format(t.actions.undoNamed, { label: undoLabel }) : t.actions.undo}
-              shortcut="Mod+Z"
-              icon={<Undo2 />}
-              disabled={!history.canUndo || readOnly}
-              data-testid="undo"
-              onClick={() => {
-                editor.undo();
-              }}
-            />
-            <IconButton
-              label={redoLabel ? format(t.actions.redoNamed, { label: redoLabel }) : t.actions.redo}
-              shortcut="Mod+Shift+Z"
-              icon={<Redo2 />}
-              disabled={!history.canRedo || readOnly}
-              data-testid="redo"
-              onClick={() => {
-                editor.redo();
-              }}
-            />
-            {!screenshot && (
-              <>
-                <Separator
-                  orientation="vertical"
-                  className="mx-1 data-[orientation=vertical]:h-5"
-                />
-                <ImageMenu context={commandContext} disabled={readOnly} />
-                <AdjustMenu context={commandContext} disabled={readOnly} />
-              </>
-            )}
-          </>
-        }
-        end={
-          <>
-            {screenshot ? (
-              <ScreenshotActions project={project} />
-            ) : (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      data-testid="copy-image"
-                      onClick={() => {
-                        copyProjectImage(project);
-                      }}
-                    >
-                      <Copy />
-                      <span className="hidden sm:inline">{t.actions.copy}</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="flex items-center gap-2">
-                    {t.actions.copy}
-                    <Kbd shortcut="Mod+C" tone="inverted" />
-                  </TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      size="sm"
-                      data-testid="export-image"
-                      onClick={() => {
-                        openDialog({ kind: 'export' });
-                      }}
-                    >
-                      <Download />
-                      <span className="hidden sm:inline">{t.actions.exportShort}</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="flex items-center gap-2">
-                    {t.actions.export}
-                    <Kbd shortcut="Mod+Shift+S" tone="inverted" />
-                  </TooltipContent>
-                </Tooltip>
-              </>
-            )}
-            <DropdownMenu>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t.editor.moreActions}
-                      data-testid="editor-menu"
-                    >
-                      <Ellipsis />
-                    </Button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{t.editor.moreActions}</TooltipContent>
-              </Tooltip>
-              <DropdownMenuContent align="end" className="w-60">
-                <DropdownMenuItem
-                  disabled={readOnly || status?.kind === 'unavailable'}
-                  data-testid="menu-save"
-                  onSelect={() => {
-                    void saveCurrentProject().then((ok) => {
-                      if (ok) toast('success', t.storage.savedToast);
-                    });
-                  }}
-                >
-                  <Save />
-                  {t.actions.save}
-                  <DropdownMenuShortcut>{shortcutText('Mod+S')}</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => {
-                    openDialog({ kind: 'export' });
-                  }}
-                >
-                  <Download />
-                  {t.actions.export}
-                  <DropdownMenuShortcut>{shortcutText('Mod+Shift+S')}</DropdownMenuShortcut>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  data-testid="menu-export-paint"
-                  onSelect={() => {
-                    openDialog({ kind: 'paintExport', projectId: project.id });
-                  }}
-                >
-                  <FileArchive />
-                  {t.projects.exportPaint}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  data-testid="menu-mode"
-                  onSelect={() => {
-                    void setProjectMode(screenshot ? 'paint' : 'screenshot');
-                  }}
-                >
-                  {screenshot ? <Paintbrush /> : <Camera />}
-                  {screenshot ? t.screenshot.toPaint : t.screenshot.toScreenshot}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5" />
-            {!panelOpen && (
+      {!zen && (
+        <TopBar
+          start={
+            <>
               <IconButton
-                label={t.panel.expand}
-                icon={<PanelRightOpen />}
-                data-testid="panel-expand"
+                label={t.editor.backToHome}
+                icon={<ArrowLeft />}
+                data-testid="back-to-home"
                 onClick={() => {
-                  useUiStore.getState().setRightPanel({ open: true });
+                  navigate({ name: 'home' });
                 }}
               />
-            )}
-            <ThemeMenu />
-          </>
-        }
-      />
+              <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5" />
+              <AppMark className="mx-1 size-6 shrink-0" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="min-w-0 truncate rounded-md px-1.5 py-1 font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                    data-testid="project-name"
+                    aria-label={`${t.editor.renameLabel}: ${name}`}
+                    onClick={() => {
+                      openDialog({ kind: 'rename', projectId: project.id, name });
+                    }}
+                  >
+                    {name}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{t.editor.renameLabel}</TooltipContent>
+              </Tooltip>
+              <SaveStatusIndicator project={project} />
+            </>
+          }
+          center={
+            <>
+              <IconButton
+                label={
+                  undoLabel ? format(t.actions.undoNamed, { label: undoLabel }) : t.actions.undo
+                }
+                shortcut="Mod+Z"
+                icon={<Undo2 />}
+                disabled={!history.canUndo || readOnly}
+                data-testid="undo"
+                onClick={() => {
+                  editor.undo();
+                }}
+              />
+              <IconButton
+                label={
+                  redoLabel ? format(t.actions.redoNamed, { label: redoLabel }) : t.actions.redo
+                }
+                shortcut="Mod+Shift+Z"
+                icon={<Redo2 />}
+                disabled={!history.canRedo || readOnly}
+                data-testid="redo"
+                onClick={() => {
+                  editor.redo();
+                }}
+              />
+              {!screenshot && (
+                <>
+                  <Separator
+                    orientation="vertical"
+                    className="mx-1 data-[orientation=vertical]:h-5"
+                  />
+                  <ImageMenu context={commandContext} disabled={readOnly} />
+                  <AdjustMenu context={commandContext} disabled={readOnly} />
+                  <ViewMenu context={commandContext} />
+                </>
+              )}
+              <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5" />
+              <PaletteButton />
+            </>
+          }
+          end={
+            <>
+              {screenshot ? (
+                <ScreenshotActions project={project} />
+              ) : (
+                <>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid="copy-image"
+                        onClick={() => {
+                          copyProjectImage(project);
+                        }}
+                      >
+                        <Copy />
+                        <span className="hidden xl:inline">{t.actions.copy}</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="flex items-center gap-2">
+                      {t.actions.copy}
+                      <Kbd shortcut="Mod+C" tone="inverted" />
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        data-testid="export-image"
+                        onClick={() => {
+                          openDialog({ kind: 'export' });
+                        }}
+                      >
+                        <Download />
+                        <span className="hidden sm:inline">{t.actions.exportShort}</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="flex items-center gap-2">
+                      {t.actions.export}
+                      <Kbd shortcut="Mod+Shift+S" tone="inverted" />
+                    </TooltipContent>
+                  </Tooltip>
+                </>
+              )}
+              <DropdownMenu modal={false}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t.editor.moreActions}
+                        data-testid="editor-menu"
+                      >
+                        <Ellipsis />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{t.editor.moreActions}</TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="end" className="w-60">
+                  <DropdownMenuItem
+                    disabled={readOnly || status?.kind === 'unavailable'}
+                    data-testid="menu-save"
+                    onSelect={() => {
+                      void saveCurrentProject().then((ok) => {
+                        if (ok) toast('success', t.storage.savedToast);
+                      });
+                    }}
+                  >
+                    <Save />
+                    {t.actions.save}
+                    <DropdownMenuShortcut>{shortcutText('Mod+S')}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      openDialog({ kind: 'export' });
+                    }}
+                  >
+                    <Download />
+                    {t.actions.export}
+                    <DropdownMenuShortcut>{shortcutText('Mod+Shift+S')}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    data-testid="menu-export-paint"
+                    onSelect={() => {
+                      openDialog({ kind: 'paintExport', projectId: project.id });
+                    }}
+                  >
+                    <FileArchive />
+                    {t.projects.exportPaint}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    data-testid="menu-save-file"
+                    disabled={readOnly}
+                    onSelect={() => {
+                      runCommand('file.saveToFile', commandContext);
+                    }}
+                  >
+                    <HardDriveDownload />
+                    <span className="flex-1">{t.fileSave.saveAs}</span>
+                  </DropdownMenuItem>
+                  {fileLink && (
+                    <p
+                      className="px-2 pb-1 text-xs text-muted-foreground"
+                      data-testid="linked-file"
+                    >
+                      {format(t.fileSave.linked, { file: fileLink.name })}
+                    </p>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    data-testid="menu-mode"
+                    onSelect={() => {
+                      void setProjectMode(screenshot ? 'paint' : 'screenshot');
+                    }}
+                  >
+                    {screenshot ? <Paintbrush /> : <Camera />}
+                    {screenshot ? t.screenshot.toPaint : t.screenshot.toScreenshot}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    data-testid="menu-zen"
+                    onSelect={() => {
+                      runCommand('view.zen', commandContext);
+                    }}
+                  >
+                    <EyeOff />
+                    {t.view.zen}
+                    <DropdownMenuShortcut>{shortcutText('\\')}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    data-testid="menu-fullscreen"
+                    onSelect={() => {
+                      getGlobalCommand('view.fullscreen')?.run();
+                    }}
+                  >
+                    <Maximize />
+                    {fullscreen ? t.view.exitFullscreen : t.view.fullscreen}
+                    <DropdownMenuShortcut>{shortcutText('Shift+F')}</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    data-testid="menu-shortcuts"
+                    onSelect={() => {
+                      openDialog({ kind: 'shortcuts' });
+                    }}
+                  >
+                    <Keyboard />
+                    {t.shortcutsDialog.title}
+                    <DropdownMenuShortcut>?</DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    data-testid="menu-settings"
+                    onSelect={() => {
+                      openDialog({ kind: 'settings' });
+                    }}
+                  >
+                    <Settings />
+                    {t.settings.title}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5" />
+              <FullscreenButton />
+              {!panelOpen && (
+                <IconButton
+                  label={t.panel.expand}
+                  icon={<PanelRightOpen />}
+                  data-testid="panel-expand"
+                  onClick={() => {
+                    setPanelVisible(true);
+                  }}
+                />
+              )}
+              <ThemeMenu />
+            </>
+          }
+        />
+      )}
 
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         <main
           id="main"
           tabIndex={-1}
@@ -412,24 +551,36 @@ function Editor({ project }: { project: OpenProject }) {
           data-testid="workspace"
           className="relative min-h-0 flex-1 overflow-hidden bg-workspace outline-none"
         >
-          <CanvasView editor={editor} />
-          <TextEditOverlay editor={editor} />
+          {rulers && <Rulers editor={editor} />}
+          {/* Canvas và các lớp đặt theo tọa độ canvas (ô gõ chữ, menu, mini toolbar) lùi vào khi bật thước. */}
+          <div
+            className="absolute inset-0"
+            style={rulers ? { top: RULER_SIZE, left: RULER_SIZE } : undefined}
+          >
+            <CanvasView editor={editor} />
+            <TextEditOverlay editor={editor} />
+            <CanvasContextMenu context={commandContext} />
+            {!zen && !readOnly && <MiniToolbar context={commandContext} />}
+          </div>
           <ImageDropZone project={project} />
-          <CanvasContextMenu context={commandContext} />
           <AdjustmentsPanel editor={editor} />
           <div
             ref={chromeRef}
-            className="pointer-events-none absolute inset-x-0 top-3 z-10 flex flex-col items-center gap-2 px-3"
+            className={cn(
+              'pointer-events-none absolute inset-x-0 top-3 z-10 flex flex-col items-center gap-2 px-3',
+              rulers && 'top-8',
+            )}
           >
             <ReadOnlyBanner />
-            {!readOnly && <ToolIsland editor={editor} compact={screenshot} />}
-            {!readOnly && <OptionsBar editor={editor} />}
+            {!readOnly && !zen && <ToolIsland editor={editor} compact={screenshot} />}
+            {!readOnly && !zen && <OptionsBar editor={editor} />}
           </div>
+          {zen && <ZenExit />}
         </main>
-        <RightPanel editor={editor} mode={mode} />
+        {!zen && <RightPanel editor={editor} mode={mode} />}
       </div>
 
-      <EditorStatusBar editor={editor} />
+      {!zen && <EditorStatusBar editor={editor} />}
       <PaintTargetDialog editor={editor} />
       <ExportDialog project={project} />
       <ResizeImageDialog editor={editor} />

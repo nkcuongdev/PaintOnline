@@ -89,6 +89,7 @@ function fakeCodec(overrides: Partial<ImageCodec> = {}): ImageCodec {
     encodeWebp: () => Promise.reject(new Error('unused')),
     zip: () => Promise.reject(new Error('unused')),
     unzip: () => Promise.reject(new Error('unused')),
+    palette: () => Promise.resolve([]),
     ...overrides,
   };
 }
@@ -211,6 +212,24 @@ describe('Autosave (mục 6.6)', () => {
     expect(fake.saves).toHaveLength(1);
     expect(fake.saves[0].document.rev).toBe(2);
     expect(autosave.current.kind).toBe('saved');
+  });
+
+  it('tắt tự động lưu (Cài đặt): không lưu theo debounce, vẫn lưu khi saveNow; bật lại thì lưu', async () => {
+    const autosave = make({ saved: { rev: 0, layers: new Map([['r1', 1]]) } });
+    autosave.setAutomatic(false);
+    source.change();
+    autosave.notifyChange();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(fake.saves).toHaveLength(0);
+    expect(autosave.current.kind).toBe('dirty');
+    // Ctrl+S, tab ẩn, rời project vẫn lưu.
+    await autosave.saveNow();
+    expect(fake.saves).toHaveLength(1);
+    source.change();
+    autosave.notifyChange();
+    autosave.setAutomatic(true);
+    await vi.advanceTimersByTimeAsync(1600);
+    expect(fake.saves).toHaveLength(2);
   });
 
   it('thao tác liên tục: tối đa 10 s một lần', async () => {

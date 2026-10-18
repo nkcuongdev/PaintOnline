@@ -84,7 +84,7 @@ function FieldControl({
         </label>
         <Slider
           id={id}
-          className="w-20 lg:w-28"
+          className="w-20 xl:w-28"
           min={0}
           max={SLIDER_STEPS}
           step={1}
@@ -511,7 +511,7 @@ export function OptionsBar({ editor }: { editor: Editor }) {
             }
           : undefined
       }
-      className="surface-glass pointer-events-auto flex h-10 max-w-full shrink-0 [scrollbar-width:none] items-center gap-3.5 overflow-x-auto rounded-xl px-3.5 whitespace-nowrap shadow-island lg:gap-4 [&::-webkit-scrollbar]:hidden"
+      className="surface-glass pointer-events-auto flex h-10 max-w-full shrink-0 [scrollbar-width:none] items-center gap-3.5 overflow-x-auto rounded-xl px-3.5 whitespace-nowrap shadow-island xl:gap-4 [&::-webkit-scrollbar]:hidden"
     >
       {content}
     </div>

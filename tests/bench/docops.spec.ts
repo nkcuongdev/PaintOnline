@@ -30,6 +30,12 @@ const MAX_FRAME_MS = 200;
 test.setTimeout(300_000);
 
 test('crop, resize, xoay, canvas size trên kịch bản L', async ({ page, browserName }) => {
+  // Lỗi Engine (thao tác ảnh thất bại) in ra để khoanh vùng.
+  page.on('console', (msg) => {
+    if (msg.type() !== 'log' && msg.type() !== 'info') {
+      console.log(`[${browserName}] ${msg.type()}: ${msg.text()}`);
+    }
+  });
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(
     `/tests/bench/index.html?docops=${process.env.DOCOPS ?? '6000x4000x10'}${process.env.TRACE ? '&trace' : ''}`,

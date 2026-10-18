@@ -28,6 +28,9 @@ test.setTimeout(180_000);
 
 test('benchmark kịch bản S và M', async ({ page, browserName }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
+  page.on('console', (msg) => {
+    if (msg.text().startsWith('[bench]')) console.log(msg.text());
+  });
   const custom = process.env.BENCH_CUSTOM;
   await page.goto(
     `/tests/bench/index.html?${custom ? `custom=${custom}` : ''}${process.env.WARMUP ? `&warmup=${process.env.WARMUP}` : ''}${process.env.BENCH_PARAMS ? `&${process.env.BENCH_PARAMS}` : ''}`,

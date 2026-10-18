@@ -1,6 +1,4 @@
 import { isEditableTarget } from '@/services/platform/browserGuards';
-import type { AppCommand, CommandContext } from './registry';
-import { isEnabled } from './registry';
 
 /**
  * ShortcutManager (mục 5.9, 7.7): khớp phím với lệnh theo phạm vi. Quy tắc tôn trọng trình duyệt:
@@ -30,6 +28,8 @@ const NAMED: Readonly<Record<string, readonly string[]>> = {
   '=': ['Equal'],
   '\\': ['Backslash'],
   '/': ['Slash'],
+  // `?` = Shift+/ trên bàn phím US (bảng phím tắt — mục 7.3).
+  '?': ['Slash'],
   Space: ['Space'],
   Escape: ['Escape'],
   Enter: ['Enter', 'NumpadEnter'],
@@ -57,7 +57,7 @@ export function parseShortcut(shortcut: string): ParsedShortcut {
   else codes = NAMED[key] ?? [key];
   return {
     mod: mods.has('Mod'),
-    shift: mods.has('Shift'),
+    shift: mods.has('Shift') || key === '?',
     alt: mods.has('Alt'),
     codes,
     anyShift: key === '+' || key === '-',
@@ -114,23 +114,32 @@ export function belongsToPanel(e: KeyboardEvent): boolean {
   );
 }
 
-interface Binding {
-  command: AppCommand;
+/** Lệnh gắn được phím: lệnh của Editor (AppCommand) hoặc lệnh cấp ứng dụng (GlobalCommand). */
+export interface BindableCommand<C> {
+  shortcuts?: readonly string[];
+  enabled?: (ctx: C) => boolean;
+  run: (ctx: C, event?: KeyboardEvent) => void;
+  release?: (ctx: C) => void;
+  repeat?: boolean;
+}
+
+interface Binding<C> {
+  command: BindableCommand<C>;
   shortcut: ParsedShortcut;
 }
 
-export class ShortcutManager {
-  private bindings: Binding[] = [];
-  private readonly held = new Map<string, AppCommand>();
+export class ShortcutManager<C> {
+  private bindings: Binding<C>[] = [];
+  private readonly held = new Map<string, BindableCommand<C>>();
 
   constructor(
-    private readonly context: () => CommandContext | null,
+    private readonly context: () => C | null,
     private readonly isApple: boolean,
     /** Cho tool đang dùng xử lý phím trước (Enter/Esc/Backspace của Polygon…). */
     private readonly toolKey: (e: KeyboardEvent) => boolean,
   ) {}
 
-  setCommands(commands: readonly AppCommand[]): void {
+  setCommands(commands: readonly BindableCommand<C>[]): void {
     this.bindings = commands.flatMap((command) =>
       (command.shortcuts ?? []).map((s) => ({ command, shortcut: parseShortcut(s) })),
     );
@@ -176,7 +185,7 @@ export class ShortcutManager {
     }
     for (const { command, shortcut } of this.bindings) {
       if (!matchesShortcut(e, shortcut, this.isApple)) continue;
-      if (!isEnabled(command, ctx)) continue;
+      if (command.enabled && !command.enabled(ctx)) continue;
       e.preventDefault();
       if (command.release) {
         // Lệnh giữ phím: chỉ chạy lần đầu, bỏ qua phím lặp.

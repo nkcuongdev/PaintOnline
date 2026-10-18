@@ -18,6 +18,12 @@ describe('formatShortcut', () => {
   it('đổi tên phím đặc biệt', () => {
     expect(shortcutKeys('Escape', false)).toEqual(['Esc']);
   });
+
+  it('phím cộng ở cuối là một phím riêng', () => {
+    expect(shortcutKeys('+', false)).toEqual(['+']);
+    expect(shortcutKeys('Mod++', false)).toEqual(['Ctrl', '+']);
+    expect(formatShortcut('Mod++', true)).toBe('⌘+');
+  });
 });
 
 describe('detectApplePlatform', () => {

@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useDocumentStore } from '@/stores/document';
 import { useSettingsStore } from '@/stores/settings';
 import { useToolStore } from '@/stores/tool';
+import { useProjectPalette } from './session';
 
 /** Bảng 20 màu cơ bản kiểu MS Paint. */
 const PALETTE: readonly Color[] = [
@@ -80,6 +81,8 @@ export function ColorControl({ editor }: { editor: Editor }) {
   const custom = useSettingsStore((s) => s.customPalette);
   const addCustom = useSettingsStore((s) => s.addCustomColor);
   const removeCustom = useSettingsStore((s) => s.removeCustomColor);
+  // Bảng màu project: màu chủ đạo của ảnh import gần nhất (mục 7.6).
+  const projectPalette = useProjectPalette();
   const [open, setOpen] = useState(false);
   const [slot, setSlot] = useState<Slot>('primary');
   const current = colors[slot];
@@ -267,6 +270,29 @@ export function ColorControl({ editor }: { editor: Editor }) {
               />
             ))}
           </div>
+
+          {projectPalette.length > 0 && (
+            <>
+              <p className="mt-3 mb-2 text-xs font-medium text-muted-foreground">
+                {t.colors.fromImage}
+              </p>
+              <div className="grid grid-cols-10 gap-1" data-testid="project-palette">
+                {projectPalette.map((c) => (
+                  <Swatch
+                    key={c}
+                    color={c}
+                    label={format(t.colors.pickPrimary, { color: shortHex(c) })}
+                    onPick={(color) => {
+                      pick(slot, color);
+                    }}
+                    onContext={(color) => {
+                      pick('secondary', color);
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
           <div className="mt-3 mb-2 flex items-center justify-between">
             <p className="text-xs font-medium text-muted-foreground">{t.colors.custom}</p>

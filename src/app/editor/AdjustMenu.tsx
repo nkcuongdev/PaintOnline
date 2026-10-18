@@ -43,7 +43,7 @@ const ICONS: Readonly<Record<AdjustmentKind, ReactNode>> = {
  */
 export function AdjustMenu({ context, disabled }: { context: CommandContext; disabled: boolean }) {
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>

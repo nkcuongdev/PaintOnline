@@ -81,6 +81,10 @@ function stagesFor(category: SurfaceCategory): readonly ReclaimStage[] {
 
 const CATEGORIES: readonly SurfaceCategory[] = ['fixed', 'layer', 'history', 'cache', 'temp'];
 
+/** Giới hạn phần lịch sử chỉnh được trong Cài đặt. */
+export const MIN_HISTORY_SHARE = 0.1;
+export const MAX_HISTORY_SHARE = 0.4;
+
 /** Mức dùng của hạng mục layer (so với phần 60% của nó) bắt đầu cảnh báo gợi ý merge/flatten. */
 export const LAYER_WARNING_RATIO = 0.9;
 
@@ -101,6 +105,8 @@ export class MemoryBudget {
   private readonly reclaimers = new Map<ReclaimStage, Set<Reclaimer>>();
   private reclaiming = false;
   private refusal: MemoryBudgetError | null = null;
+  /** Phần dành cho lịch sử hoàn tác (Cài đặt — mục 7.3); mặc định `CATEGORY_SHARE.history`. */
+  private historyShare = CATEGORY_SHARE.history;
 
   constructor(readonly config: MemoryBudgetConfig) {}
 
@@ -123,7 +129,18 @@ export class MemoryBudget {
   }
 
   limitFor(category: SurfaceCategory): number {
-    return this.config.totalBytes * CATEGORY_SHARE[category];
+    const share = category === 'history' ? this.historyShare : CATEGORY_SHARE[category];
+    return this.config.totalBytes * share;
+  }
+
+  get historyShareRatio(): number {
+    return this.historyShare;
+  }
+
+  /** Đổi phần dành cho lịch sử (giới hạn 10–40%); người gọi tự cắt bớt lịch sử nếu vượt. */
+  setHistoryShare(share: number): void {
+    this.historyShare = Math.min(MAX_HISTORY_SHARE, Math.max(MIN_HISTORY_SHARE, share));
+    this.notify();
   }
 
   /** Còn chỗ cho `bytes` trong hạng mục và trong tổng ngân sách? (không chạy chuỗi thu hồi) */

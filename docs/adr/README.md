@@ -35,3 +35,5 @@ viết ADR mới theo mẫu: **Bối cảnh → Quyết định → Hệ quả**
 | [0025](./0025-selection-and-image-transforms.md) | GĐ5: vùng chọn ngoài history, pixel nổi, biến đổi ảnh theo dải   | Chấp nhận  |
 | [0026](./0026-filters-and-adjustments.md)        | GĐ6: filter thuần trong Worker, xem trước thích ứng, Gradient    | Chấp nhận  |
 | [0027](./0027-screenshot-editor.md)              | GĐ7: Redact khảm/làm mờ đồng bộ, chế độ Screenshot, Làm đẹp      | Chấp nhận  |
+| [0028](./0028-laptop-only-v1.md)                 | Gộp GĐ8 + GĐ9 chỉ cho laptop; cắt tablet, điện thoại, cảm ứng    | Chấp nhận  |
+| [0029](./0029-tiled-storage-v1x.md)              | Tiled storage: đo lãng phí ở GĐ9, đề xuất cho v1.x               | Đề xuất    |

@@ -119,7 +119,8 @@ export function BeautifyPanel({ editor }: { editor: Editor }) {
         </p>
       </div>
 
-      <fieldset className={cn('flex flex-col gap-2', !enabled && 'opacity-60')}>
+      {/* Đang tắt: điều khiển vẫn dùng được (đổi bất kỳ mục nào sẽ bật khung) nên không làm mờ chữ. */}
+      <fieldset className="flex flex-col gap-2">
         <legend className="mb-2 text-sm font-medium">{t.beautify.background}</legend>
         <div
           role="radiogroup"
@@ -153,7 +154,7 @@ export function BeautifyPanel({ editor }: { editor: Editor }) {
         </div>
       </fieldset>
 
-      <div className={cn('flex flex-col gap-4', !enabled && 'opacity-60')}>
+      <div className="flex flex-col gap-4">
         <Labeled label={t.beautify.padding} value={`${String(shown.padding)} px`}>
           <Slider
             aria-label={t.beautify.padding}

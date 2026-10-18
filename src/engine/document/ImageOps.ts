@@ -44,6 +44,8 @@ export interface ImageOpsHost {
   /** Chạy command; thiếu bộ nhớ thì từ chối an toàn và báo (trả false). */
   execute(command: Command): boolean;
   notify(code: NoticeCode): void;
+  /** Lỗi không mong đợi (ngoài thiếu bộ nhớ) — ghi nhật ký lỗi. */
+  reportError(error: unknown): void;
   /** Trước khi biến đổi: commit pixel nổi, kết thúc gõ chữ, hủy thao tác đang kéo. */
   settle(): void;
   /** Đang chạy nền: khóa thao tác vẽ, undo/redo. */
@@ -216,7 +218,8 @@ export class ImageOps {
     let bounds: Rect | null;
     try {
       bounds = await this.contentBounds(doc);
-    } catch {
+    } catch (error) {
+      this.host.reportError(error);
       this.host.notify('image.failed');
       return false;
     } finally {
@@ -329,7 +332,10 @@ export class ImageOps {
       return executed;
     } catch (error) {
       if (isAllocationError(error)) this.host.notify('memory.refused');
-      else if (!(error instanceof Aborted)) this.host.notify('image.failed');
+      else if (!(error instanceof Aborted)) {
+        this.host.reportError(error);
+        this.host.notify('image.failed');
+      }
       return false;
     } finally {
       if (!handedOver) for (const layer of created) layer.dispose();
