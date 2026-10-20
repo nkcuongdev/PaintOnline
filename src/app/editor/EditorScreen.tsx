@@ -578,13 +578,30 @@ function Editor({ project }: { project: OpenProject }) {
           <div
             ref={chromeRef}
             className={cn(
-              'pointer-events-none absolute inset-x-0 top-3 z-10 flex flex-col items-center gap-2 px-3',
+              '@container pointer-events-none absolute inset-x-0 top-3 z-10 flex flex-col items-center gap-2 px-3',
               rulers && 'top-8',
             )}
           >
             <ReadOnlyBanner />
-            {!readOnly && !zen && <ToolIsland editor={editor} compact={screenshot} />}
-            {!readOnly && !zen && <OptionsBar editor={editor} />}
+            {!readOnly && !zen && (
+              // Options bar rộng cố định bằng tool island, căn giữa thẳng hàng: đổi lựa chọn không làm
+              // thanh co giãn hay xê dịch. Ô bọc bỏ qua bề rộng nội dung của options bar (contain) nên
+              // cột rộng theo tool island; nội dung dài thì xuống dòng.
+              // Island rút gọn của Screenshot quá hẹp: options bar rộng bằng island đầy đủ (880 px).
+              <div className="flex max-w-full flex-col gap-2">
+                <ToolIsland editor={editor} compact={screenshot} />
+                <div className="[contain:inline-size]">
+                  <div
+                    className={cn(
+                      'ml-[calc((100%-var(--bar-width))/2)] w-(--bar-width) [--bar-width:100%]',
+                      screenshot && '[--bar-width:min(max(100%,880px),100cqw)]',
+                    )}
+                  >
+                    <OptionsBar editor={editor} />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           {zen && <ZenExit />}
         </main>

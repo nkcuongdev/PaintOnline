@@ -439,7 +439,7 @@ export const gettingStartedCategory: Category = {
         { type: 'h2', id: 'thanh-tuy-chon', text: 'Thanh tùy chọn' },
         {
           type: 'p',
-          text: 'Ngay dưới thanh công cụ là các tùy chọn của **công cụ đang chọn**: cỡ, độ mờ, kiểu nét, font chữ… Khi bạn chọn một đối tượng chú thích (mũi tên, khung, chữ…), thanh này hiện **thuộc tính của đối tượng đó** để sửa trực tiếp. Tùy chọn ít dùng nằm trong nút {icon:sliders} **Tùy chọn nâng cao**. Với nhiều công cụ, thanh còn có một dòng gợi ý cách dùng.',
+          text: 'Ngay dưới thanh công cụ là các tùy chọn của **công cụ đang chọn**: cỡ, độ mờ, kiểu nét, font chữ… Khi bạn chọn một đối tượng chú thích (mũi tên, khung, chữ…), thanh này hiện **thuộc tính của đối tượng đó** để sửa trực tiếp. Tùy chọn ít dùng nằm trong nút {icon:sliders} **Tùy chọn nâng cao**. Với nhiều công cụ, rê chuột (hoặc bấm) vào {icon:info} ở cuối thanh để xem gợi ý cách dùng.',
         },
         {
           type: 'figure',

@@ -125,17 +125,20 @@ describe('Options bar — Redact và kiểu nhanh', () => {
         <OptionsBar editor={editor} />
       </TooltipProvider>,
     );
-    expect(screen.getByTestId('option-blockSize')).toBeTruthy();
-    expect(screen.queryByTestId('option-blurRadius')).toBeNull();
-    expect(screen.queryByTestId('redact-blur-warning')).toBeNull();
+    // Field/cảnh báo không áp dụng vẫn giữ chỗ nhưng ẩn và không tương tác được (inert).
+    const hidden = (id: string) => screen.getByTestId(id).closest('[inert]') !== null;
+    expect(hidden('option-blockSize')).toBe(false);
+    expect(hidden('option-blurRadius')).toBe(true);
+    expect(hidden('redact-blur-warning')).toBe(true);
     selectTool('redact', { mode: 'blur' });
     rerender(
       <TooltipProvider>
         <OptionsBar editor={editor} />
       </TooltipProvider>,
     );
-    expect(screen.getByTestId('option-blurRadius')).toBeTruthy();
-    expect(screen.queryByTestId('option-blockSize')).toBeNull();
+    expect(hidden('option-blurRadius')).toBe(false);
+    expect(hidden('option-blockSize')).toBe(true);
+    expect(hidden('redact-blur-warning')).toBe(false);
     expect(screen.getByTestId('redact-blur-warning').textContent).toContain(
       t.toolOptions.redactBlurWarning,
     );

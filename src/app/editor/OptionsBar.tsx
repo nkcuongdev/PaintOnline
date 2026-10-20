@@ -1,5 +1,13 @@
-import { Check, ChevronDown, SlidersHorizontal, Trash2, TriangleAlert, X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import {
+  Check,
+  ChevronDown,
+  Info,
+  SlidersHorizontal,
+  Trash2,
+  TriangleAlert,
+  X,
+} from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import { IconButton } from '@/app/shared/IconButton';
 import { formatShortcut } from '@/app/shared/shortcut';
 import {
@@ -11,6 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Slider } from '@/components/ui/slider';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Editor } from '@/engine/core/Editor';
 import {
   OPTION_SCHEMAS,
@@ -68,18 +77,28 @@ function label(key: string): string {
 function FieldControl({
   field,
   value,
+  disabled = false,
   onChange,
 }: {
   field: OptionField;
   value: unknown;
+  /** Không áp dụng cho lựa chọn hiện tại: hiện mờ, vẫn giữ chỗ để control khác không xê dịch. */
+  disabled?: boolean;
   onChange: (value: unknown) => void;
 }) {
   const id = `opt-${field.key.replace('.', '-')}`;
   if (field.kind === 'slider') {
     const v = typeof value === 'number' ? value : field.min;
     return (
-      <div className="flex items-center gap-2.5" data-testid={`option-${field.key}`}>
-        <label htmlFor={id} className="whitespace-nowrap text-muted-foreground">
+      <div
+        className="flex items-center gap-2.5"
+        title={disabled ? t.toolOptions.notApplicable : undefined}
+        data-testid={`option-${field.key}`}
+      >
+        <label
+          htmlFor={id}
+          className={cn('whitespace-nowrap text-muted-foreground', disabled && 'opacity-50')}
+        >
           {label(field.label)}
         </label>
         <Slider
@@ -88,6 +107,7 @@ function FieldControl({
           min={0}
           max={SLIDER_STEPS}
           step={1}
+          disabled={disabled}
           value={[toPosition(field, v)]}
           aria-label={label(field.label)}
           aria-valuetext={display(field, v)}
@@ -95,7 +115,9 @@ function FieldControl({
             onChange(fromPosition(field, values[0] ?? toPosition(field, v)));
           }}
         />
-        <span className="w-12 text-right font-medium tabular-nums">{display(field, v)}</span>
+        <span className={cn('w-12 text-right font-medium tabular-nums', disabled && 'opacity-50')}>
+          {display(field, v)}
+        </span>
       </div>
     );
   }
@@ -113,9 +135,26 @@ function FieldControl({
               type="button"
               aria-label={`${label(field.label)}: ${current ? label(current.label) : ''}`}
               className="flex h-7 items-center gap-1 rounded-md bg-muted px-2.5 font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-              style={current ? preview(current.value) : undefined}
             >
-              {current ? label(current.label) : ''}
+              {/* Bề rộng theo lựa chọn dài nhất: đổi font không làm control phía sau xê dịch. */}
+              <span className="inline-grid text-left">
+                {field.choices.map((choice) => (
+                  <span
+                    key={String(choice.value)}
+                    aria-hidden="true"
+                    className="invisible col-start-1 row-start-1"
+                    style={preview(choice.value)}
+                  >
+                    {label(choice.label)}
+                  </span>
+                ))}
+                <span
+                  className="col-start-1 row-start-1"
+                  style={current ? preview(current.value) : undefined}
+                >
+                  {current ? label(current.label) : ''}
+                </span>
+              </span>
               <ChevronDown className="size-3.5 text-muted-foreground" />
             </button>
           </DropdownMenuTrigger>
@@ -220,20 +259,39 @@ function visibleFields(
   if (!schema) return [];
   return (schema.fields as readonly OptionField[]).filter((f) => {
     if (tool && f.onlyFor && !f.onlyFor.includes(tool)) return false;
-    if (group === 'brush') {
-      // Lưu lượng chỉ có nghĩa với nét stamp; độ cứng không áp dụng cho marker/thư pháp.
-      if (f.key === 'flow' && values.preset === 'round') return false;
-      if (f.key === 'hardness' && (values.preset === 'marker' || values.preset === 'calligraphy')) {
-        return false;
-      }
-    }
-    // Che thông tin: cỡ ô chỉ cho Khảm, độ mờ chỉ cho Làm mờ.
-    if (group === 'redact') {
-      if (f.key === 'blockSize') return values.mode === 'pixelate';
-      if (f.key === 'blurRadius') return values.mode === 'blur';
-    }
+    // Lưu lượng chỉ có nghĩa với nét stamp (nằm trong menu nâng cao nên ẩn hẳn).
+    if (group === 'brush' && f.key === 'flow' && values.preset === 'round') return false;
     return true;
   });
+}
+
+/**
+ * Field trên thanh không áp dụng cho lựa chọn hiện tại: hiện mờ thay vì ẩn để đổi lựa chọn không
+ * làm thanh (căn giữa) co giãn, control khác xê dịch.
+ */
+function inapplicable(field: OptionField, values: Record<string, unknown>): boolean {
+  // Độ cứng không áp dụng cho marker/thư pháp.
+  return (
+    field.key === 'hardness' && (values.preset === 'marker' || values.preset === 'calligraphy')
+  );
+}
+
+/** Che thông tin: cỡ ô chỉ cho Khảm, độ mờ chỉ cho Làm mờ (Tô kín không có tham số). */
+const REDACT_MODE_FIELDS: Readonly<Record<string, string>> = {
+  blockSize: 'pixelate',
+  blurRadius: 'blur',
+};
+
+/**
+ * Giữ chỗ cho phần chỉ hiện ở một số lựa chọn: ẩn nhưng vẫn chiếm chỗ (không bấm/focus được) để đổi
+ * lựa chọn không làm nội dung (căn giữa) co giãn, control khác xê dịch.
+ */
+function Reserved({ shown, children }: { shown: boolean; children: ReactNode }) {
+  return (
+    <div className={cn('col-start-1 row-start-1', !shown && 'invisible')} inert={!shown}>
+      {children}
+    </div>
+  );
 }
 
 function Fields({
@@ -247,18 +305,34 @@ function Fields({
 }) {
   const main = fields.filter((f) => !f.advanced);
   const advanced = fields.filter((f) => f.advanced);
+  const control = (field: OptionField) => (
+    <FieldControl
+      key={field.key}
+      field={field}
+      value={readOptionField(values, field.key)}
+      disabled={inapplicable(field, values)}
+      onChange={(value) => {
+        onChange(field.key, value);
+      }}
+    />
+  );
+  // Field theo kiểu che xếp chồng một chỗ, rộng bằng field rộng nhất.
+  const modeFields = main.filter((f) => f.key in REDACT_MODE_FIELDS);
   return (
     <>
-      {main.map((field) => (
-        <FieldControl
-          key={field.key}
-          field={field}
-          value={readOptionField(values, field.key)}
-          onChange={(value) => {
-            onChange(field.key, value);
-          }}
-        />
-      ))}
+      {main.map((field) => {
+        if (!(field.key in REDACT_MODE_FIELDS)) return control(field);
+        if (field !== modeFields[0]) return null;
+        return (
+          <div key="mode-fields" className="grid">
+            {modeFields.map((f) => (
+              <Reserved key={f.key} shown={values.mode === REDACT_MODE_FIELDS[f.key]}>
+                {control(f)}
+              </Reserved>
+            ))}
+          </div>
+        );
+      })}
       {advanced.length > 0 && (
         <Popover>
           <PopoverTrigger asChild>
@@ -318,6 +392,7 @@ function ObjectFields({
   const values = sameGroup ? (styleOf(first) as Record<string, unknown>) : {};
   const tool = objects.every((o) => o.type === first.type) ? toolOf(first) : null;
   const presets = presetKindForObjects(objects);
+  const redact = objects.some((o) => o.type === 'redact');
   const blurWarning = objects.some((o) => o.type === 'redact' && o.mode === 'blur');
   return (
     <>
@@ -336,7 +411,7 @@ function ObjectFields({
           }}
         />
       )}
-      {blurWarning && <BlurWarning />}
+      {redact && <BlurWarning shown={blurWarning} />}
       <IconButton
         size="sm"
         label={t.toolOptions.deleteObject}
@@ -351,17 +426,70 @@ function ObjectFields({
   );
 }
 
-/** Mục 5.4: làm mờ nhẹ có thể bị khôi phục một phần — nhắc dùng Tô kín cho thông tin nhạy cảm. */
-function BlurWarning() {
+/**
+ * Mục 5.4: làm mờ nhẹ có thể bị khôi phục một phần — nhắc dùng Tô kín cho thông tin nhạy cảm.
+ * Nhãn ngắn luôn hiện (không phải rê chuột mới thấy), câu đầy đủ trong tooltip và cho trình đọc
+ * màn hình.
+ */
+function BlurWarning({ shown }: { shown: boolean }) {
   return (
-    <span
-      className="flex items-center gap-1 truncate text-warning"
-      role="note"
-      data-testid="redact-blur-warning"
-    >
-      <TriangleAlert className="size-3.5 shrink-0" />
-      {t.toolOptions.redactBlurWarning}
-    </span>
+    <div className="grid">
+      <Reserved shown={shown}>
+        <BlurWarningLabel />
+      </Reserved>
+    </div>
+  );
+}
+
+function BlurWarningLabel() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          className="flex cursor-default items-center gap-1 rounded-md text-warning outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          role="note"
+          data-testid="redact-blur-warning"
+        >
+          <TriangleAlert className="size-3.5 shrink-0" />
+          <span aria-hidden="true">{t.toolOptions.redactBlurWarningShort}</span>
+          <span className="sr-only">{t.toolOptions.redactBlurWarning}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" sideOffset={8} className="max-w-72">
+        {t.toolOptions.redactBlurWarning}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * Gợi ý cách dùng: icon ⓘ, câu đầy đủ trong tooltip — thanh luôn gọn, không cắt chữ. Bấm cũng mở
+ * (màn cảm ứng không rê chuột được).
+ */
+function HintTip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Tooltip open={open} onOpenChange={setOpen}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={t.toolOptions.hintLabel}
+          data-testid="options-hint"
+          onClick={(e) => {
+            // Chặn Radix đóng tooltip khi bấm vào trigger.
+            e.preventDefault();
+            setOpen(true);
+          }}
+          className="flex size-7 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Info className="size-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" sideOffset={8} className="max-w-72">
+        {text}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -411,7 +539,6 @@ const HINTS: Partial<Record<ToolId, string>> = {
 function FloatingControls({ editor }: { editor: Editor }) {
   return (
     <>
-      <span className="truncate text-muted-foreground">{t.toolOptions.floatingHint}</span>
       <Button
         size="xs"
         data-testid="floating-commit"
@@ -433,6 +560,7 @@ function FloatingControls({ editor }: { editor: Editor }) {
         <X />
         {t.menu.cancelTransform}
       </Button>
+      <HintTip text={t.toolOptions.floatingHint} />
     </>
   );
 }
@@ -452,6 +580,9 @@ export function OptionsBar({ editor }: { editor: Editor }) {
   let content: ReactNode;
   if (textEdit) {
     const values = options.text as unknown as Record<string, unknown>;
+    const editingHint = format(t.toolOptions.textEditing, {
+      shortcut: formatShortcut('Mod+Enter', platformFeatures.isApple),
+    });
     content = (
       <>
         <Fields
@@ -461,11 +592,7 @@ export function OptionsBar({ editor }: { editor: Editor }) {
             editor.options.set('text', optionFieldPatch(values, key, value));
           }}
         />
-        <span className="text-muted-foreground">
-          {format(t.toolOptions.textEditing, {
-            shortcut: formatShortcut('Mod+Enter', platformFeatures.isApple),
-          })}
-        </span>
+        <HintTip text={editingHint} />
       </>
     );
   } else if (floating && SELECT_TOOLS.includes(tool)) {
@@ -476,9 +603,10 @@ export function OptionsBar({ editor }: { editor: Editor }) {
     const group = getToolDefinition(tool).optionGroup;
     const values = group ? (options[group] as unknown as Record<string, unknown>) : {};
     const fields = group ? visibleFields(group, tool, values) : [];
-    const blurWarning = tool === 'redact' && values.mode === 'blur';
-    const hint = blurWarning ? null : tool === 'polygon' ? t.toolOptions.polygonHint : HINTS[tool];
+    const blurWarning = values.mode === 'blur';
+    const hint = tool === 'polygon' ? t.toolOptions.polygonHint : HINTS[tool];
     const presets = presetKindForTool(tool);
+    const controls = presets !== null || fields.length > 0;
     content = (
       <>
         {presets && <StylePresets editor={editor} kind={presets} />}
@@ -491,8 +619,14 @@ export function OptionsBar({ editor }: { editor: Editor }) {
             }}
           />
         )}
-        {blurWarning && <BlurWarning />}
-        {hint && <span className="truncate text-muted-foreground">{hint}</span>}
+        {tool === 'redact' && <BlurWarning shown={blurWarning} />}
+        {hint &&
+          (controls ? (
+            <HintTip text={hint} />
+          ) : (
+            // Tool không có tùy chọn: thanh còn trống nên hiện thẳng gợi ý thay vì một icon ⓘ.
+            <span className="py-1 text-center whitespace-normal text-muted-foreground">{hint}</span>
+          ))}
       </>
     );
   }
@@ -511,7 +645,7 @@ export function OptionsBar({ editor }: { editor: Editor }) {
             }
           : undefined
       }
-      className="surface-glass pointer-events-auto flex min-h-10 max-w-full shrink-0 flex-wrap items-center justify-center gap-x-3.5 gap-y-1 rounded-xl px-3.5 py-1 whitespace-nowrap shadow-island xl:gap-x-4"
+      className="surface-glass pointer-events-auto flex min-h-10 w-full flex-wrap items-center justify-center gap-x-3.5 gap-y-1 rounded-xl px-3.5 py-1 whitespace-nowrap shadow-island xl:gap-x-4"
     >
       {content}
     </div>

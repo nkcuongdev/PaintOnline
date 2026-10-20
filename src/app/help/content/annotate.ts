@@ -92,7 +92,7 @@ export const annotateCategory: Category = {
             ],
             [
               'Làm mờ',
-              'Nhòe nội dung. **Độ mờ** 4–40 (mặc định 12). Thanh tùy chọn có cảnh báo: làm mờ nhẹ có thể bị khôi phục một phần.',
+              'Nhòe nội dung. **Độ mờ** 4–40 (mặc định 12). Thanh tùy chọn hiện cảnh báo **Có thể bị khôi phục**: làm mờ nhẹ có thể bị khôi phục một phần — rê chuột vào để xem đầy đủ.',
             ],
           ],
         },
