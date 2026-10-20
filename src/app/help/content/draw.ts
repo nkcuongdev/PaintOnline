@@ -491,12 +491,12 @@ export const drawCategory: Category = {
             ['Cỡ', '8–300 px.'],
             ['Độ đậm chữ', 'Thường, Vừa, Đậm.'],
             ['Căn', 'Trái, Giữa, Phải.'],
+            ['Chữ nghiêng', 'Bật/tắt kiểu chữ nghiêng.'],
             ['Nền chữ', 'Hộp nền phía sau chữ, màu là màu phụ.'],
             [
               'Viền chữ',
               'Viền trắng hoặc đen (tự chọn để tương phản với màu chữ) giúp chữ dễ đọc trên ảnh rối.',
             ],
-            ['Chữ nghiêng (nâng cao)', 'Nằm trong {icon:sliders} Tùy chọn nâng cao.'],
           ],
         },
         {

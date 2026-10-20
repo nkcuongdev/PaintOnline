@@ -295,7 +295,7 @@ export const OPTION_SCHEMAS: { readonly [G in OptionGroupId]?: OptionSchema<Tool
           { value: 'right', label: 'alignRight' },
         ],
       },
-      { kind: 'toggle', key: 'italic', label: 'italic', advanced: true },
+      { kind: 'toggle', key: 'italic', label: 'italic' },
       { kind: 'toggle', key: 'background', label: 'textBackground' },
       { kind: 'toggle', key: 'outline', label: 'textOutline' },
     ],
