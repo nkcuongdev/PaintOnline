@@ -368,13 +368,15 @@ describe('Ảnh nền của Redact theo nền bên dưới (mục 5.4: cache t�
     }
   });
 
-  it('Rasterize layer chú thích giữ nguyên ảnh đã khảm', () => {
+  it('chặn Rasterize riêng layer có vùng che; Merge Visible giữ nguyên ảnh đã khảm', () => {
     const editor = editorWith(W, H);
     redactWith(editor, 'pixelate', { blockSize: 20 });
     const before = editor.readPixels();
     const vector = editor.document?.layers[1];
     if (vector?.kind !== 'vector') throw new Error('thiếu layer chú thích');
-    expect(editor.layers.rasterize(vector.id)).toBe(true);
+    expect(editor.layers.rasterize(vector.id)).toBe(false);
+    expect(Array.from(editor.readPixels().data)).toEqual(Array.from(before.data));
+    expect(editor.layers.mergeVisible()).toBe(true);
     expect(Array.from(editor.readPixels().data)).toEqual(Array.from(before.data));
   });
 });

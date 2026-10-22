@@ -137,6 +137,10 @@ export class VectorLayer extends LayerCommon {
 
 export type Layer = RasterLayer | VectorLayer;
 
+export function hasRedactions(layer: Layer): boolean {
+  return layer.kind === 'vector' && layer.objects.some((o) => o.type === 'redact');
+}
+
 /** `normal` của plan tương ứng `source-over` của Canvas 2D; 15 mode còn lại trùng tên (mục 5.4). */
 export function blendToComposite(mode: BlendMode): GlobalCompositeOperation {
   return mode === 'normal' ? 'source-over' : mode;

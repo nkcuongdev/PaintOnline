@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { redactionFills, countRedactions } from '@/services/io/projectFile';
+import { countRedactions } from '@/services/io/projectFile';
 import { exportSize, formatBytes, clampExportScale } from '@/services/io/exportImage';
 import { sampleRecord } from './testing';
 import { sanitizeSettings, sanitizeToolOptions } from './settings';
@@ -73,28 +73,19 @@ describe('trạng thái lưu (mục 6.6)', () => {
 });
 
 describe('Redact khi xuất .paint (mục 10.2)', () => {
-  it('vùng che áp lên mọi layer ảnh bên dưới, căn ra ngoài theo pixel, tọa độ trong layer', () => {
+  it('cảnh báo cả vùng che trên layer ẩn trong bản sao lưu editable', () => {
     const record = sampleRecord();
     expect(countRedactions(record)).toBe(1);
-    const fills = redactionFills(record);
-    // Redact (5.5, 5.5, 40×20) → pixel (5, 5) – (46, 26); layer r1 ở (0, 0).
-    expect(fills.get('r1')).toEqual([
-      {
-        x: 5,
-        y: 5,
-        width: 41,
-        height: 21,
-        rgba: [0, 0, 0, 255],
-        mode: 'solid',
-        full: { x: 5, y: 5, width: 41, height: 21 },
-      },
-    ]);
+    record.layers[1].visible = false;
+    expect(countRedactions(record)).toBe(1);
   });
 
-  it('layer ảnh nằm trên layer chú thích không bị tô', () => {
+  it('cảnh báo vùng che không phụ thuộc thứ tự layer', () => {
     const record = sampleRecord();
     record.layers = [...record.layers].reverse();
-    expect(redactionFills(record).size).toBe(0);
+    expect(countRedactions(record)).toBe(1);
+    record.layers = record.layers.filter((l) => l.kind === 'raster');
+    expect(countRedactions(record)).toBe(0);
   });
 });
 

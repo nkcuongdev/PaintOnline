@@ -8,6 +8,7 @@ export type ChannelMessage =
   | { type: 'takeover-request'; projectId: string; from: string }
   /** Tab giữ khóa đã lưu xong và nhả khóa. */
   | { type: 'takeover-released'; projectId: string; to: string }
+  | { type: 'takeover-denied'; projectId: string; to: string }
   /** Fallback khi không có Web Locks: hỏi/đáp ai đang giữ project. */
   | { type: 'lock-probe'; projectId: string; from: string }
   | { type: 'lock-held'; projectId: string; to: string }

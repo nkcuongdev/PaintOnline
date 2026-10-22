@@ -135,11 +135,28 @@ export function drawLayer(
   region: Rect,
   options: CompositeOptions,
 ): void {
-  if (!layer.visible || layer.opacity <= 0) return;
+  if (!layer.visible) return;
   if (layer.kind === 'vector') {
-    drawVectorLayer(target, layer, region, options);
+    if (layer.opacity > 0) drawVectorLayer(target, layer, region, options);
+    // Redact is a protective pass, independent of layer opacity/blend (including opacity 0).
+    const state = options.objects;
+    const pending = state.pending?.layerId === layer.id ? state.pending.objects : [];
+    target.save();
+    target.globalAlpha = 1;
+    target.globalCompositeOperation = 'source-over';
+    drawObjects(
+      target,
+      [...layer.objects, ...pending],
+      region,
+      state.env,
+      state.overrides,
+      { kind: 'layer', id: layer.id },
+      true,
+    );
+    target.restore();
     return;
   }
+  if (layer.opacity <= 0) return;
   const preview = options.preview?.layerId === layer.id ? options.preview : null;
   const floating = options.floating?.layerId === layer.id ? options.floating : null;
   const filter = options.filter?.layerId === layer.id ? options.filter : null;
@@ -322,6 +339,7 @@ export function drawObjects(
   env: ObjectEnv,
   overrides: ReadonlyMap<ID, AnnotationObject | null> | null,
   layer: BackdropLayer | null,
+  redactionsOnly = false,
 ): void {
   const list: AnnotationObject[] = [];
   for (const original of objects) {
@@ -331,6 +349,7 @@ export function drawObjects(
   let step = 0;
   let spotlights = false;
   list.forEach((obj, index) => {
+    if (redactionsOnly && obj.type !== 'redact') return;
     if (obj.type === 'step') step++;
     const renderer = rendererFor(obj);
     if (!renderer) return;

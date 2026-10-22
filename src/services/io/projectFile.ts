@@ -1,8 +1,5 @@
 import * as v from 'valibot';
-import type { ID, Rect } from '@/engine/core/types';
-import { redactPixelRect } from '@/engine/layers/objects/annotate';
-import { redactHalo, redactStrength } from '@/engine/layers/objects/redactEffect';
-import { opaqueColor, parseColor } from '@/engine/utils/color';
+import type { Rect } from '@/engine/core/types';
 import type { EncodedLayer, ProjectBundle } from '@/services/storage/projectRepo';
 import {
   documentRecordSchema,
@@ -13,7 +10,7 @@ import {
   type ProjectMode,
   type StoredImage,
 } from '@/services/storage/schema';
-import type { FillRect, ImageCodec, ZipEntry } from '@/services/workers/codec';
+import type { ImageCodec, ZipEntry } from '@/services/workers/codec';
 import { ZipError } from '@/services/workers/ops/zip';
 import { readDimensions, sniffFormat } from './imageHeader';
 
@@ -86,54 +83,13 @@ export function countRedactions(document: Pick<DocumentRecord, 'layers'>): numbe
   return count;
 }
 
-/**
- * Vùng cần tô kín trong từng layer raster (tọa độ trong ảnh của layer): mọi Redact của layer chú
- * thích phía trên layer đó, căn ra ngoài theo pixel nguyên như khi render.
- */
-export function redactionFills(document: Pick<DocumentRecord, 'layers'>): Map<ID, FillRect[]> {
-  const fills = new Map<ID, FillRect[]>();
-  document.layers.forEach((layer, index) => {
-    if (layer.kind !== 'vector') return;
-    for (const obj of layer.objects) {
-      if (obj.type !== 'redact') continue;
-      const r = redactPixelRect(obj);
-      const { r: red, g: green, b: blue } = parseColor(opaqueColor(obj.color));
-      const rgba: FillRect['rgba'] = [red, green, blue, 255];
-      // Khảm/làm mờ được nướng đúng kiểu (lưới khảm căn theo góc vùng che như khi hiển thị).
-      const effect =
-        obj.mode === 'solid'
-          ? { mode: 'solid' as const }
-          : { mode: obj.mode, strength: redactStrength(obj), halo: redactHalo(obj) };
-      for (const below of document.layers.slice(0, index)) {
-        if (below.kind !== 'raster' || !below.bounds) continue;
-        const local = intersectLocal(r, below.bounds);
-        if (!local) continue;
-        const full = { ...r, x: r.x - below.bounds.x, y: r.y - below.bounds.y };
-        const list = fills.get(below.id) ?? [];
-        list.push({ ...local, rgba, ...effect, full });
-        fills.set(below.id, list);
-      }
-    }
-  });
-  return fills;
-}
-
-function intersectLocal(r: Rect, bounds: Rect): Rect | null {
-  const x0 = Math.max(r.x, bounds.x);
-  const y0 = Math.max(r.y, bounds.y);
-  const x1 = Math.min(r.x + r.width, bounds.x + bounds.width);
-  const y1 = Math.min(r.y + r.height, bounds.y + bounds.height);
-  if (x1 <= x0 || y1 <= y0) return null;
-  return { x: x0 - bounds.x, y: y0 - bounds.y, width: x1 - x0, height: y1 - y0 };
-}
-
 // ---------------------------------------------------------------------------
 // Xuất
 // ---------------------------------------------------------------------------
 
 export interface BuildOptions {
   appVersion: string;
-  /** "Áp dụng vĩnh viễn vùng che trước khi xuất": pixel dưới Redact bị thay hẳn trong file. */
+  /** Sharing copy: only the visible composite, without original/hidden editable data. */
   bakeRedactions: boolean;
   now?: number;
 }
@@ -143,16 +99,13 @@ export async function buildProjectFile(
   codec: ImageCodec,
   options: BuildOptions,
 ): Promise<Blob> {
-  const fills = options.bakeRedactions
-    ? redactionFills(bundle.document)
-    : new Map<ID, FillRect[]>();
-  const layers = await Promise.all(
-    bundle.layers.map(async (layer) => {
-      const rects = fills.get(layer.layerId);
-      const png = rects?.length ? await codec.fillLayerRects(layer.png, rects) : layer.png;
-      return { ...layer, png };
-    }),
-  );
+  // A sharing copy contains only the visible composite. Never carry original layers,
+  // vectors, hidden content or the old thumbnail into the archive.
+  if (options.bakeRedactions) {
+    const { sharingBundle } = await import('./sharingBundle');
+    bundle = await sharingBundle(bundle, codec);
+  }
+  const layers = bundle.layers;
   const manifest: PaintManifest = {
     format: PAINT_FORMAT,
     formatVersion: PAINT_FORMAT_VERSION,

@@ -1,6 +1,37 @@
-import { saveCurrentProject } from '@/app/editor/session';
+import { getCurrentProject, hasUnsavedChanges, saveCurrentProject } from '@/app/editor/session';
 import { t } from '@/i18n';
 import { toast } from '@/stores/ui';
+
+/** Keep the waiting SW and the editor intact until all work is durable. */
+export async function applyPendingUpdate(
+  updateSW: (reload: boolean) => Promise<void>,
+): Promise<boolean> {
+  const project = getCurrentProject();
+  const failed = () => {
+    toast('error', t.pwa.saveFailed, {
+      persistent: true,
+      action: {
+        label: t.pwa.reload,
+        run: () => {
+          void applyPendingUpdate(updateSW);
+        },
+      },
+    });
+    return false;
+  };
+  try {
+    if (project && !(project.readOnly && !hasUnsavedChanges()) && !(await saveCurrentProject())) {
+      return failed();
+    }
+    if (getCurrentProject() !== project || hasUnsavedChanges()) {
+      return failed();
+    }
+    await updateSW(true);
+    return true;
+  } catch {
+    return failed();
+  }
+}
 
 /**
  * PWA (mục 3.3, ADR 0011): đăng ký service worker precache app shell để mở nhanh và dùng được khi
@@ -22,9 +53,7 @@ export function registerServiceWorker(): void {
               label: t.pwa.reload,
               run: () => {
                 // Lưu bản hiện tại (durability strict) trước khi kích hoạt bản mới và tải lại.
-                void saveCurrentProject().finally(() => {
-                  void updateSW(true);
-                });
+                void applyPendingUpdate(updateSW);
               },
             },
           });

@@ -715,7 +715,9 @@ export type NoticeCode =
   /** Áp dụng bộ lọc thất bại (lỗi Worker, document đổi) — ảnh giữ nguyên. */
   | 'filter.failed'
   /** Thao tác chỉnh sửa bị chặn khi bảng điều chỉnh đang mở. */
-  | 'filter.open';
+  | 'filter.open'
+  | 'output.pending'
+  | 'layer.redactionProtected';
 
 /** Bản sao vùng chọn cho UI (thanh trạng thái, menu — mục 7.2). */
 export interface SelectionSummary {

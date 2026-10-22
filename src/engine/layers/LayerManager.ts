@@ -31,7 +31,7 @@ import {
 } from '../render/Compositor';
 import { intersectRect, isEmptyRect, roundOutRect, unionRect } from '../utils/rect';
 import type { ObjectEnv } from './objects/types';
-import { RasterLayer, touchContent, VectorLayer, type Layer } from './layers';
+import { hasRedactions, RasterLayer, touchContent, VectorLayer, type Layer } from './layers';
 
 /** Những gì LayerManager cần từ Editor — giữ module này không phụ thuộc Editor. */
 export interface LayerManagerHost {
@@ -58,7 +58,7 @@ export const MAX_LAYER_NAME = 100;
 
 /** Layer hiện ra (có đóng góp vào ảnh ghép). */
 function shows(layer: Layer): boolean {
-  return layer.visible && layer.opacity > 0;
+  return layer.visible && (layer.opacity > 0 || hasRedactions(layer));
 }
 
 /**
@@ -206,6 +206,7 @@ export class LayerManager {
     const upper = doc?.layers[index];
     const lower = doc?.layers[index - 1];
     if (!upper || !lower) return 'no-layer-below';
+    if (hasRedactions(upper) || hasRedactions(lower)) return 'layer.redactionProtected';
     if (upper.locked || lower.locked) return 'layer.locked';
     if (!upper.visible || !lower.visible) return 'layer.hidden';
     return null;
@@ -359,6 +360,10 @@ export class LayerManager {
     const doc = this.host.document();
     const layer = doc?.getLayer(id);
     if (!doc || layer?.kind !== 'vector') return false;
+    if (hasRedactions(layer)) {
+      this.host.notify('layer.redactionProtected');
+      return false;
+    }
     if (layer.locked) {
       this.host.notify('layer.locked');
       return false;

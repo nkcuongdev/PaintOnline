@@ -11,7 +11,7 @@ import type { Command } from '../history/types';
 import { InputManager, type InputHandlers } from '../input/InputManager';
 import { InputRecorder, type RecordedEvent, type Recording } from '../input/recorder';
 import { LayerManager } from '../layers/LayerManager';
-import { RasterLayer, touchContent, type VectorLayer } from '../layers/layers';
+import { hasRedactions, RasterLayer, touchContent, type VectorLayer } from '../layers/layers';
 import { ObjectEnvironment } from '../layers/objects/env';
 import { rendererFor } from '../layers/objects/registry';
 import { LAYER_WARNING_RATIO, MemoryBudget } from '../memory/MemoryBudget';
@@ -807,15 +807,15 @@ export class Editor {
    * Chế độ chỉ đọc (tab khác giữ khóa project — mục 6.6): mọi Command bị từ chối có thông báo,
    * chỉ còn xem, zoom, pan, lấy màu, copy và export.
    */
-  setReadOnly(readOnly: boolean): void {
+  setReadOnly(readOnly: boolean, options: { preserveDraft?: boolean } = {}): void {
     if (this.isReadOnly === readOnly) return;
     this.isReadOnly = readOnly;
     if (readOnly) {
       this.toolManager.cancel();
       this.filterRunner.dispose();
-      this.textSession.cancel();
+      if (!options.preserveDraft) this.textSession.cancel();
       this.objectController.clearSelection();
-      this.selectionManager.reset();
+      if (!options.preserveDraft) this.selectionManager.reset();
     }
     this.input?.refreshCursor();
   }
@@ -913,6 +913,31 @@ export class Editor {
   /** Đang chờ tác vụ nền (tô loang trong Worker). */
   get busy(): boolean {
     return this.isBusy;
+  }
+
+  /** Work outside Document which would be lost on reload. */
+  get hasPendingDraft(): boolean {
+    return (
+      this.selectionManager.floating !== null ||
+      this.textSession.active ||
+      this.isGestureActive ||
+      this.filterRunner.isOpen
+    );
+  }
+
+  /** Save/Copy/Export share one policy: apply drafts, or refuse without discarding them. */
+  prepareForOutput(): boolean {
+    if (!this.doc || this.isGestureActive || this.isBusy || this.filterRunner.isOpen) {
+      this.notify('output.pending');
+      return false;
+    }
+    if (
+      this.textSession.active &&
+      !this.textSession.commit(this.textSession.current?.object.text ?? '')
+    )
+      return false;
+    if (this.selectionManager.floating && !this.selectionManager.commitFloating()) return false;
+    return true;
   }
 
   /**
@@ -1072,6 +1097,7 @@ export class Editor {
 
   /** Ghép document (đã nướng mọi hiệu ứng) thành Blob ảnh — export và copy clipboard. */
   async exportImage(options: ExportOptions = {}): Promise<Blob> {
+    if (!this.prepareForOutput()) throw new Error('Unapplied draft');
     const doc = this.doc;
     if (!doc) throw new Error('Chưa có document');
     const scale = Math.min(2, Math.max(0.1, options.scale ?? 1));
@@ -1493,6 +1519,10 @@ export class Editor {
       this.objectController.clearSelection();
       return layer;
     }
+    if (hasRedactions(active)) {
+      this.notify('layer.redactionProtected');
+      return null;
+    }
     const command = new RasterizeLayerCommand('history.rasterize', active, (id, vector) =>
       this.rasterize(id, vector),
     );
@@ -1504,6 +1534,7 @@ export class Editor {
 
   /** Dựng layer raster từ đối tượng của layer chú thích (ảnh render cuối cùng — mục 5.4). */
   private rasterize(id: ID, vector: VectorLayer): RasterLayer {
+    if (hasRedactions(vector)) throw new Error('Use Merge Visible to preserve redactions');
     const doc = this.doc;
     if (!doc) throw new Error('Chưa có document');
     const raster = new RasterLayer(
@@ -1636,8 +1667,8 @@ export class Editor {
         manager.deselect();
         return true;
       },
-      copy: (merged = false) => manager.copy(merged),
-      cut: () => (writable() ? manager.cut() : null),
+      copy: (merged = false) => (this.prepareForOutput() ? manager.copy(merged) : null),
+      cut: () => (writable() && this.prepareForOutput() ? manager.cut() : null),
       paste: (image, at = null) => {
         if (!writable() || !manager.paste(image, at)) return false;
         // Ảnh dán/thả đang nổi để di chuyển ngay (mục 7.4): đang ở tool khác thì sang tool Chọn.

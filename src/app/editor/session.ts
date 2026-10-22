@@ -149,7 +149,7 @@ function attach(
           return editor.document?.rev ?? 0;
         },
         get blocked() {
-          return editor.isGestureActive || editor.busy;
+          return editor.hasPendingDraft || editor.busy;
         },
         serialize: () => editor.serialize(),
         captureLayers: (savedLayers) => editor.captureLayers(savedLayers),
@@ -159,7 +159,8 @@ function attach(
       saved,
       lastCheckpointAt,
       onStatus: (status) => {
-        if (current === project) setStatus(status);
+        if (current === project)
+          setStatus(status.kind === 'saved' && editor.hasPendingDraft ? { kind: 'dirty' } : status);
         // Lỗi ghi (không phải hết dung lượng): ghi nhật ký lỗi cục bộ để chẩn đoán (mục 10.3).
         if (status.kind === 'error') recordError('storage', `autosave: ${status.reason}`);
       },
@@ -174,6 +175,15 @@ function attach(
       },
     });
     project.autosave = autosave;
+    const updateDraftStatus = () => {
+      if (current !== project) return;
+      const status = autosave.current;
+      setStatus(status.kind === 'saved' && editor.hasPendingDraft ? { kind: 'dirty' } : status);
+    };
+    offs.push(
+      editor.on('selectionChanged', updateDraftStatus),
+      editor.on('textEditChanged', updateDraftStatus),
+    );
     autosave.setAutomatic(useSettingsStore.getState().autosave);
     offs.push(
       editor.on('documentChanged', () => {
@@ -233,8 +243,11 @@ function attach(
 function becomeReadOnly(project: OpenProject, reason: 'other-tab' | 'stolen'): void {
   if (project.readOnly) return;
   project.readOnly = true;
-  project.autosave?.stop({ kind: 'readonly' });
-  project.editor.setReadOnly(true);
+  const dirty = project.editor.hasPendingDraft || project.autosave?.isDirty;
+  project.autosave?.stop(
+    dirty ? (useProjectStore.getState().saveStatus ?? { kind: 'dirty' }) : { kind: 'readonly' },
+  );
+  project.editor.setReadOnly(true, { preserveDraft: true });
   project.lock?.release();
   project.lock = null;
   if (current === project) {
@@ -257,7 +270,10 @@ export interface OpenProjectInit {
 /** Tạo editor + document, lưu ngay lần đầu. Trả về id, hoặc null nếu bị từ chối. */
 export async function createProject(init: OpenProjectInit): Promise<string | null> {
   await initStorage();
-  await closeCurrentProject({ discardUnsaved: true });
+  if (!(await closeCurrentProject())) {
+    toast('error', t.storage.transitionBlocked);
+    return null;
+  }
   const editor = await createEditor();
   if (!createDocumentIn(editor, init.document)) return null;
   // Ảnh dán từ clipboard mở ở chế độ chú thích: Arrow được chọn sẵn (mục 7.4).
@@ -298,7 +314,8 @@ export type LoadResult =
   | { status: 'ready'; project: OpenProject }
   | { status: 'missing' }
   | { status: 'corrupt'; hasCheckpoint: boolean; checkpointAt: number | null }
-  | { status: 'failed' };
+  | { status: 'failed' }
+  | { status: 'blocked' };
 
 const loading = new Map<ID, Promise<LoadResult>>();
 
@@ -324,7 +341,11 @@ export function loadProject(id: ID, options: { lock?: ProjectLock } = {}): Promi
 
 async function doLoad(id: ID, givenLock: ProjectLock | undefined): Promise<LoadResult> {
   await initStorage();
-  await closeCurrentProject({ discardUnsaved: true });
+  if (!(await closeCurrentProject())) {
+    givenLock?.release();
+    toast('error', t.storage.transitionBlocked);
+    return { status: 'blocked' };
+  }
   if (!storageReady()) {
     givenLock?.release();
     return { status: 'missing' };
@@ -413,7 +434,7 @@ let closing: Promise<boolean> | null = null;
 /**
  * Đóng project đang mở: lưu bền vững (strict) + checkpoint, nhả khóa, giải phóng Editor. Nếu không
  * lưu được (lỗi, hết dung lượng), giữ project trong tab để người dùng còn tải .paint — trừ khi
- * `discardUnsaved` (mở project khác).
+ * `discardUnsaved` chỉ khi người dùng chủ động chọn Bỏ.
  */
 export async function closeCurrentProject(
   options: { discardUnsaved?: boolean } = {},
@@ -431,12 +452,18 @@ export async function closeCurrentProject(
 async function doClose(options: { discardUnsaved?: boolean }): Promise<boolean> {
   const project = current;
   if (!project) return true;
-  let saved = true;
-  if (project.autosave && !project.readOnly) {
-    saved = await project.autosave.close();
+  let saved = !hasUnsavedChanges();
+  if (!project.readOnly) {
+    try {
+      saved =
+        project.editor.prepareForOutput() && !!project.autosave && (await project.autosave.close());
+      saved = saved && !hasUnsavedChanges();
+    } catch (error) {
+      recordError('storage', error);
+      saved = false;
+    }
   }
-  const status = useProjectStore.getState().saveStatus;
-  const unsaved = !saved && status !== null && hasUnsavedWork(status);
+  const unsaved = !saved;
   if (unsaved && !options.discardUnsaved) {
     retained = true;
     emit();
@@ -486,14 +513,26 @@ export function getRetainedProject(): OpenProject | null {
 export async function saveCurrentProject(): Promise<boolean> {
   const project = current;
   if (!project?.autosave || project.readOnly) return false;
-  if (project.autosave.current.kind === 'error' || project.autosave.current.kind === 'quota') {
-    return project.autosave.retry();
+  try {
+    if (!project.editor.prepareForOutput()) return false;
+    let saved: boolean;
+    if (project.autosave.current.kind === 'error' || project.autosave.current.kind === 'quota') {
+      saved = await project.autosave.retry('strict');
+    } else {
+      saved = await project.autosave.saveNow('strict');
+    }
+    return current === project && saved && !hasUnsavedChanges();
+  } catch (error) {
+    recordError('storage', error);
+    if (current === project) setStatus({ kind: 'error', reason: 'transient' });
+    return false;
   }
-  return project.autosave.saveNow('strict');
 }
 
 export function retrySave(): void {
-  void current?.autosave?.retry();
+  void saveCurrentProject().catch((error: unknown) => {
+    recordError('storage', error);
+  });
 }
 
 export async function renameProject(id: ID, name: string): Promise<void> {
@@ -545,22 +584,27 @@ export async function setProjectPalette(palette: readonly Color[]): Promise<void
 
 export function hasUnsavedChanges(): boolean {
   if (!current) return false;
+  if (current.editor.hasPendingDraft || current.autosave?.isDirty) return true;
   const status = useProjectStore.getState().saveStatus;
   if (!status) return false;
-  if (status.kind === 'unavailable') return (current.editor.document?.rev ?? 0) > 0;
+  if (status.kind === 'unavailable') return !current.readOnly;
   return hasUnsavedWork(status);
 }
 
 /**
  * "Chỉnh sửa ở tab này" (mục 10.1): xin tab đang giữ khóa lưu xong và nhả khóa; quá 5 giây thì
- * lấy hẳn khóa. Sau đó mở lại project từ DB để có bản mới nhất.
+ * báo thất bại, không tự cướp khóa. Sau đó mở lại project từ DB để có bản mới nhất.
  */
 export async function takeOverEditing(): Promise<void> {
   const project = current;
-  if (!project?.readOnly) return;
+  if (!project?.readOnly || useProjectStore.getState().takingOver) return;
+  if (hasUnsavedChanges()) {
+    toast('error', t.storage.transitionBlocked);
+    return;
+  }
   useProjectStore.setState({ takingOver: true });
   broadcast({ type: 'takeover-request', projectId: project.id, from: TAB_ID });
-  const lock = await acquireProjectLock(project.id, { waitMs: 5000, stealOnTimeout: true });
+  const lock = await acquireProjectLock(project.id, { waitMs: 5000 });
   if (!lock) {
     useProjectStore.setState({ takingOver: false });
     toast('error', t.storage.takeoverFailed);
@@ -581,7 +625,16 @@ onChannelMessage((message) => {
   const project = current;
   if (project?.id !== message.projectId || project.readOnly) return;
   void (async () => {
-    await project.autosave?.saveNow('strict');
+    let saved = false;
+    try {
+      saved = await saveCurrentProject();
+    } catch (error) {
+      recordError('storage', error);
+    }
+    if (!saved || current !== project || hasUnsavedChanges()) {
+      broadcast({ type: 'takeover-denied', projectId: project.id, to: message.from });
+      return;
+    }
     becomeReadOnly(project, 'other-tab');
     broadcast({ type: 'takeover-released', projectId: project.id, to: message.from });
   })();

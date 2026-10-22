@@ -412,9 +412,8 @@ export class SelectionManager {
   commitFloating(): boolean {
     const f = this.float;
     if (!f) return false;
-    this.float = null;
     const doc = this.host.document();
-    let committed: boolean;
+    let committed = false;
     let next: Selection | null = this.current;
     try {
       if (!doc) return false;
@@ -427,15 +426,19 @@ export class SelectionManager {
       }
       return committed;
     } finally {
-      this.host.invalidate(inflateRect(unionRect(f.bounds, f.hole?.bounds ?? EMPTY_RECT), 2));
-      // Vùng chọn cũ (lỗ) có thể vừa được dùng trong command: chỉ hủy sau khi command đã chạy.
-      if (next !== this.current) {
-        const previous = this.current;
-        this.current = next;
-        if (previous && previous !== next) previous.dispose();
+      // A refused command must leave the only copy of the draft available for retry/backup.
+      if (committed) {
+        this.float = null;
+        this.host.invalidate(inflateRect(unionRect(f.bounds, f.hole?.bounds ?? EMPTY_RECT), 2));
+        // Vùng chọn cũ (lỗ) có thể vừa được dùng trong command: chỉ hủy sau khi command đã chạy.
+        if (next !== this.current) {
+          const previous = this.current;
+          this.current = next;
+          if (previous && previous !== next) previous.dispose();
+        }
+        f.dispose();
+        this.emit();
       }
-      f.dispose();
-      this.emit();
     }
   }
 
@@ -456,10 +459,10 @@ export class SelectionManager {
     const layer = doc.getLayer(f.target.layerId);
     if (layer?.kind !== 'raster') return false;
     // Nhân bản mà chưa dời, hoặc nhấc rồi đặt lại đúng chỗ: không đổi pixel nào.
-    if (f.isIdentity) return false;
+    if (f.isIdentity) return true;
     const dest = intersectRect(roundOutRect(f.bounds), doc.bounds);
     const area = intersectRect(unionRect(f.hole?.bounds ?? EMPTY_RECT, dest), doc.bounds);
-    if (isEmptyRect(area)) return false;
+    if (isEmptyRect(area)) return true;
     const label = f.isTranslation
       ? f.hole
         ? 'history.moveSelection'
@@ -507,7 +510,9 @@ export class SelectionManager {
       this.host.notify('memory.refused');
       return false;
     }
-    return this.host.execute(new AddLayerCommand('history.paste', layer, index, true));
+    const ok = this.host.execute(new AddLayerCommand('history.paste', layer, index, true));
+    if (!ok) layer.dispose();
+    return ok;
   }
 
   /** Vùng chọn sau khi commit: hình cũ theo phép biến đổi của pixel nổi. */
@@ -607,7 +612,7 @@ export class SelectionManager {
    * đang thấy), kèm vị trí để dán lại đúng chỗ. Pixel nổi được commit trước.
    */
   copy(merged: boolean): ClipboardCapture | null {
-    this.commitFloating();
+    if (this.float && !this.commitFloating()) return null;
     const doc = this.host.document();
     const sel = this.current;
     if (!doc || !sel) return null;

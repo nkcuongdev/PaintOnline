@@ -8,7 +8,7 @@ import {
   randomStroke,
   seededRandom,
 } from '@/engine/testing/helpers';
-import { buildProjectFile, readProjectFile, redactionFills } from '@/services/io/projectFile';
+import { buildProjectFile, readProjectFile } from '@/services/io/projectFile';
 import { mainThreadCodec } from '@/services/workers/codec';
 import { Autosave, type AutosaveSource } from './autosave';
 import { Database } from './db';
@@ -434,14 +434,14 @@ describe('File .paint (mục 6.5, 10.2)', () => {
     const editor = richEditor();
     await autosaveFor(editor, repo).saveNow();
     const bundle = await repo.readBundle(editor.document?.id ?? '');
-    const fills = redactionFills(bundle.document);
-    expect(fills.size).toBe(1);
     const file = await buildProjectFile(bundle, mainThreadCodec, {
       appVersion: 'test',
       bakeRedactions: true,
     });
     const imported = await readProjectFile(file, mainThreadCodec);
-    // Xóa layer chú thích: chỉ còn pixel của layer ảnh.
+    expect(imported.document.layers).toHaveLength(1);
+    expect(imported.document.layers[0].kind).toBe('raster');
+    // Bản chia sẻ chỉ có ảnh ghép; không còn đối tượng chú thích để xóa/khôi phục.
     const document = {
       ...imported.document,
       layers: imported.document.layers.filter((l) => l.kind === 'raster'),

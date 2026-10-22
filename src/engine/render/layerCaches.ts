@@ -1,6 +1,6 @@
 import type { Document } from '../core/Document';
 import type { ID, Rect } from '../core/types';
-import type { Layer, RasterLayer } from '../layers/layers';
+import { hasRedactions, type Layer, type RasterLayer } from '../layers/layers';
 import type { MemoryBudget } from '../memory/MemoryBudget';
 import type { Canvas, Ctx2D, Surface } from '../memory/surfaces';
 import { inflateRect, intersectRect, isEmptyRect, roundOutRect, unionRect } from '../utils/rect';
@@ -53,7 +53,7 @@ function needsBackdrop(layer: Layer): boolean {
 }
 
 function shows(layer: Layer): boolean {
-  return layer.visible && layer.opacity > 0;
+  return layer.visible && (layer.opacity > 0 || hasRedactions(layer));
 }
 
 /** Chữ ký cấu trúc của một dải layer: đổi thứ tự, ẩn/hiện, opacity, blend → dựng lại cache. */

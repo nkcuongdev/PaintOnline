@@ -149,7 +149,9 @@ export const vi = {
     readOnlyBanner: 'Project đang được sửa ở tab khác. Tab này chỉ xem được.',
     takeOver: 'Chỉnh sửa ở tab này',
     takingOver: 'Đang chuyển quyền…',
-    takeoverFailed: 'Không lấy được quyền chỉnh sửa — hãy thử lại.',
+    takeoverFailed: 'Chưa thể tiếp quản: tab đang chỉnh sửa có thể chưa lưu xong. Hãy thử lại sau.',
+    transitionBlocked:
+      'Chưa lưu được project hiện tại. Hãy tiếp tục, thử lưu lại hoặc tải .paint; chỉ chọn Bỏ khi muốn bỏ thay đổi.',
     handedOver: 'Đã chuyển quyền chỉnh sửa sang tab khác. Tab này chuyển sang chỉ đọc.',
     lockStolen: 'Tab khác đã lấy quyền chỉnh sửa. Tab này chuyển sang chỉ đọc.',
     openedReadOnly: 'Project đang mở ở tab khác nên tab này chỉ xem được.',
@@ -193,7 +195,7 @@ export const vi = {
       'Project có {n} vùng che thông tin (Redact). Vùng che không phá hủy ảnh gốc, nên ai mở file .paint vẫn có thể xóa vùng che để xem nội dung bên dưới.',
     bake: 'Áp dụng vĩnh viễn vùng che trước khi xuất',
     bakeHint:
-      'Pixel gốc dưới vùng che bị thay hẳn trong file. Project trong trình duyệt không đổi.',
+      'Ghép các layer hiện thành một ảnh; bỏ layer ẩn và dữ liệu gốc có thể khôi phục. Project trong trình duyệt không đổi.',
     keepOriginal: 'Xuất nguyên bản',
     cancel: 'Hủy',
     exportFailed: 'Không xuất được file .paint',
@@ -716,6 +718,10 @@ export const vi = {
     'filter.empty': 'Layer không có pixel nào để điều chỉnh.',
     'filter.failed': 'Không áp dụng được bộ lọc — ảnh vẫn giữ nguyên.',
     'filter.open': 'Đang mở bảng điều chỉnh — hãy Áp dụng hoặc Hủy trước.',
+    'output.pending':
+      'Hãy kết thúc thao tác hoặc Áp dụng/Hủy điều chỉnh trước khi lưu, copy hay xuất.',
+    'layer.redactionProtected':
+      'Layer có vùng che: hãy dùng Gộp các layer hiện để giữ vùng che an toàn.',
   },
 
   filters: {
@@ -864,6 +870,8 @@ export const vi = {
     updateReady: 'Có phiên bản mới của Paint Online.',
     reload: 'Lưu và tải lại',
     offlineReady: 'Paint Online đã sẵn sàng dùng cả khi mất mạng.',
+    saveFailed:
+      'Chưa lưu được công việc hiện tại. Hãy thử lưu lại hoặc tải bản sao .paint trước khi cập nhật.',
   },
 
   objectList: {

@@ -215,6 +215,7 @@ const APP_VERSION = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0
 /** Dữ liệu project lấy thẳng từ Editor (bản mới nhất trong tab, kể cả khi không có IndexedDB). */
 async function bundleFromEditor(project: OpenProject): Promise<ProjectBundle> {
   const { editor } = project;
+  if (!editor.prepareForOutput()) throw new Error('Unapplied draft');
   const data = editor.serialize();
   if (!data) throw new Error('Chưa có document');
   const captures = editor.captureLayers(new Map());

@@ -196,7 +196,7 @@ export class Autosave {
   }
 
   /** Người dùng nhấn "Thử lại" (sau lỗi lưu hoặc hết dung lượng). */
-  retry(): Promise<boolean> {
+  retry(durability: Durability = 'default'): Promise<boolean> {
     this.failures = 0;
     this.quotaCleanupTried = false;
     this.missingRetried = false;
@@ -206,7 +206,7 @@ export class Autosave {
     if (this.status.kind === 'error' || this.status.kind === 'quota') {
       this.setStatus({ kind: 'dirty' });
     }
-    return this.saveNow('default');
+    return this.saveNow(durability);
   }
 
   /** Dung lượng vừa được giải phóng (dọn thùng rác, xóa project) — tự thử lại nếu đang hết quota. */

@@ -107,7 +107,7 @@ export const annotateCategory: Category = {
           items: [
             '**Ảnh xuất ra** (Copy, Tải xuống, Xuất PNG/JPG/WebP): pixel gốc dưới vùng che bị thay hẳn. Mép vùng che được làm tròn ra ngoài theo điểm ảnh nên không sót viền chữ.',
             '**Trong project**: vùng che là đối tượng sửa được, ảnh gốc vẫn ở bên dưới để bạn chỉnh lại vị trí. Do đó **file `.paint` vẫn chứa ảnh gốc** — khi tải `.paint`, chọn **Áp dụng vĩnh viễn vùng che** nếu sẽ gửi file đó cho người khác.',
-            'Vùng che luôn đục hoàn toàn, không xoay được và không dùng độ mờ.',
+            'Vùng che luôn đục hoàn toàn, kể cả khi đổi độ mờ/chế độ hòa trộn của layer. Ẩn layer sẽ ẩn cả vùng che. Muốn chuyển layer có vùng che thành ảnh, dùng **Gộp các layer hiện**.',
           ],
         },
         {

@@ -26,7 +26,7 @@ export class TextSession {
 
   /** Bắt đầu sửa: `objectId` = chữ có sẵn (bị ẩn khỏi canvas trong lúc sửa), null = chữ mới. */
   begin(object: TextObject, objectId: ID | null): void {
-    if (this.state) this.commit(this.state.object.text);
+    if (this.state && !this.commit(this.state.object.text)) return;
     this.state = { objectId, object };
     if (objectId) {
       this.objects.select([objectId]);
@@ -61,11 +61,9 @@ export class TextSession {
   }
 
   /** Kết thúc sửa và ghi chữ. Chữ rỗng: không tạo mới / xóa chữ cũ. */
-  commit(text: string): void {
+  commit(text: string): boolean {
     const s = this.state;
-    if (!s) return;
-    this.state = null;
-    this.objects.setOverrides(null);
+    if (!s) return true;
     const empty = text.trim() === '';
     const next: TextObject = { ...s.object, text };
     if (s.objectId) {
@@ -73,16 +71,20 @@ export class TextSession {
       if (hit?.object.type === 'text') {
         if (empty) {
           this.objects.select([s.objectId]);
-          this.objects.deleteSelected();
+          if (!this.objects.deleteSelected()) return false;
         } else if (text !== hit.object.text || !sameStyle(hit.object, next)) {
-          this.objects.replace([{ ...next, id: s.objectId }], 'history.editText');
+          if (!this.objects.replace([{ ...next, id: s.objectId }], 'history.editText'))
+            return false;
           this.objects.select([s.objectId]);
         }
       }
     } else if (!empty) {
-      this.objects.add(next, 'history.addText');
+      if (!this.objects.add(next, 'history.addText')) return false;
     }
+    this.state = null;
+    this.objects.setOverrides(null);
     this.emit(null);
+    return true;
   }
 
   cancel(): void {
