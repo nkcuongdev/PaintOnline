@@ -108,6 +108,17 @@ async function pasteDraft(page: Page) {
   await expect(page.getByTestId('save-status')).toHaveAttribute('data-status', 'dirty');
 }
 
+async function drawAndReadBlackStroke(page: Page): Promise<number[]> {
+  await drawOnCanvas(page, [
+    [0.4, 0.5],
+    [0.6, 0.5],
+  ]);
+  // Pointer-up commits the stroke before requestAnimationFrame paints the display canvas.
+  // Capture the reference only after that frame, especially on WebKit CI runners.
+  await expect.poll(() => displayPixel(page, 0.5, 0.5)).toEqual([0, 0, 0, 255]);
+  return displayPixel(page, 0.5, 0.5);
+}
+
 test.describe('Đợt 1 — dữ liệu chưa lưu', () => {
   test('paste → Ctrl+S → reload retains the exact visible pasted pixel', async ({ page }) => {
     await openEditorFromPreset(page);
@@ -137,12 +148,7 @@ test.describe('Đợt 1 — dữ liệu chưa lưu', () => {
       await save(page);
       const current = await page.getByTestId('editor-screen').getAttribute('data-project-id');
       await failSaves(page, fault);
-      await drawOnCanvas(page, [
-        [0.4, 0.5],
-        [0.6, 0.5],
-      ]);
-      const before = await displayPixel(page, 0.5, 0.5);
-      expect(before[0]).toBeLessThan(100);
+      const before = await drawAndReadBlackStroke(page);
       await page.keyboard.press('ControlOrMeta+s');
       if (fault === 'QuotaExceededError') {
         await expect(page.getByTestId('quota-dialog')).toBeVisible();
@@ -190,11 +196,7 @@ test.describe('Đợt 1 — dữ liệu chưa lưu', () => {
     await expect(second.getByTestId('read-only-banner')).toBeVisible();
     await failSaves(page, 'QuotaExceededError');
     await page.bringToFront();
-    await drawOnCanvas(page, [
-      [0.4, 0.5],
-      [0.6, 0.5],
-    ]);
-    const before = await displayPixel(page, 0.5, 0.5);
+    const before = await drawAndReadBlackStroke(page);
     await page.keyboard.press('ControlOrMeta+s');
     await expect(page.getByTestId('quota-dialog')).toBeVisible();
     await page.keyboard.press('Escape');
