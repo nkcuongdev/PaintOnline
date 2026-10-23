@@ -456,7 +456,7 @@ function BlurWarningLabel() {
           <span className="sr-only">{t.toolOptions.redactBlurWarning}</span>
         </span>
       </TooltipTrigger>
-      <TooltipContent side="bottom" sideOffset={8} className="max-w-72">
+      <TooltipContent side="bottom" sideOffset={8} className="max-w-72 text-center">
         {t.toolOptions.redactBlurWarning}
       </TooltipContent>
     </Tooltip>
@@ -486,7 +486,7 @@ function HintTip({ text }: { text: string }) {
           <Info className="size-4" />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="bottom" sideOffset={8} className="max-w-72">
+      <TooltipContent side="bottom" sideOffset={8} className="max-w-56 text-center">
         {text}
       </TooltipContent>
     </Tooltip>
