@@ -39,6 +39,7 @@ import { recordError, setInputProvider } from '@/services/diagnostics/errorLog';
 import { useSettingsStore } from '@/stores/settings';
 import type { ProjectMode, ProjectFileLink } from '@/services/storage/schema';
 import { detectMemoryConfig } from '@/services/platform/deviceTier';
+import { DecodeBudgetError } from '@/services/io/decodeBudget';
 import { platformFeatures } from '@/services/platform/features';
 import { sharedWorkerPool } from '@/services/workers/pool';
 import { useProjectStore } from '@/stores/project';
@@ -64,6 +65,8 @@ export interface OpenProject {
   autosave: Autosave | null;
   lock: ProjectLock | null;
   readOnly: boolean;
+  /** Damaged source is never written by this session (including close/pagehide). */
+  recovery?: { failed: number; checkpointAt: number | null };
 }
 
 let current: OpenProject | null = null;
@@ -352,7 +355,7 @@ export type LoadResult =
   | { status: 'ready'; project: OpenProject }
   | { status: 'missing' }
   | { status: 'corrupt'; hasCheckpoint: boolean; checkpointAt: number | null }
-  | { status: 'failed' }
+  | { status: 'failed'; reason?: string }
   | { status: 'cancelled' }
   | { status: 'blocked' };
 
@@ -428,11 +431,12 @@ async function doLoad(
 
     let loaded: LoadedProject;
     try {
-      loaded = await repo.loadProject(id);
+      loaded = await repo.loadProject(id, detectMemoryConfig());
     } catch (error) {
       if (stale()) return { status: 'cancelled' };
       if (error instanceof ProjectNotFoundError) return { status: 'missing' };
       if (error instanceof CorruptProjectError) {
+        if (error.hasCheckpoint) await repo.protectCheckpoint(id);
         const info = error.hasCheckpoint
           ? await repo.getCheckpointInfo(id).catch(() => null)
           : null;
@@ -443,7 +447,10 @@ async function doLoad(
           checkpointAt: info?.createdAt ?? null,
         };
       }
-      return { status: 'failed' };
+      return {
+        status: 'failed',
+        ...(error instanceof DecodeBudgetError ? { reason: error.message } : {}),
+      };
     }
 
     if (stale()) return { status: 'cancelled' };
@@ -456,6 +463,8 @@ async function doLoad(
         lock = null;
       });
     const { images, failed } = await decodeLayerImages(loaded, codec(), undefined, abort.signal);
+    if (stale()) return { status: 'cancelled' };
+    if (failed > 0) await repo.protectCheckpoint(id);
     if (stale()) return { status: 'cancelled' };
     const { document: record, meta } = loaded;
 
@@ -488,7 +497,8 @@ async function doLoad(
       createdAt: meta.createdAt,
       autosave: null,
       lock,
-      readOnly: lock === null,
+      readOnly: lock === null || failed > 0,
+      ...(failed > 0 ? { recovery: { failed, checkpointAt: checkpoint?.createdAt ?? null } } : {}),
     };
     offLost?.();
     offLost = null;
@@ -512,7 +522,11 @@ async function doLoad(
     return { status: 'ready', project };
   } catch (error) {
     recordError('storage', error);
-    return { status: stale() ? 'cancelled' : 'failed' };
+    if (stale()) return { status: 'cancelled' };
+    return {
+      status: 'failed',
+      ...(error instanceof DecodeBudgetError ? { reason: error.message } : {}),
+    };
   } finally {
     if (cancelOpening === cleanup) cancelOpening = null;
     if (!published) cleanup();
@@ -710,6 +724,7 @@ export function hasUnsavedChanges(): boolean {
  */
 export async function takeOverEditing(): Promise<void> {
   const project = current;
+  if (project?.recovery) return;
   if (!project?.readOnly || useProjectStore.getState().takingOver) return;
   if (hasUnsavedChanges()) {
     toast('error', t.storage.transitionBlocked);

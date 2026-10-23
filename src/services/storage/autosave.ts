@@ -227,6 +227,7 @@ export class Autosave {
    * để lưu thì lượt strict bỏ qua — trang chủ vẫn phải thấy đúng thay đổi cuối), rồi ghi checkpoint.
    */
   async close(): Promise<boolean> {
+    if (this.stopped || this.disposed) return !this.isDirty;
     const ok = await this.saveNow('strict');
     if (ok && this.created) await this.refreshThumbnail();
     if (ok && this.created) {
@@ -431,7 +432,7 @@ export class Autosave {
       if (!this.quotaCleanupTried) {
         this.quotaCleanupTried = true;
         // Checkpoint là thứ bị xóa đầu tiên khi thiếu dung lượng (mục 6.6).
-        const freed = await repo.deleteCheckpoints().catch(() => 0);
+        const freed = await repo.deleteCheckpoints({ automatic: true }).catch(() => 0);
         if (freed > 0) return 'retry-now';
       }
       this.setStatus({ kind: 'quota' });

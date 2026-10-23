@@ -3,6 +3,9 @@ import type { ID } from '@/engine/core/types';
 import type { ImageCodec } from '@/services/workers/codec';
 import type { LoadedProject } from './projectRepo';
 import type { DocumentRecord } from './schema';
+import { matchesPng, MAX_LAYER_DECODES, preflightDocument } from '@/services/io/decodeBudget';
+import type { MemoryBudgetConfig } from '@/engine/core/types';
+import { decodeLayerBounded } from '@/services/io/layerDecode';
 
 /**
  * Dựng lại document từ bản lưu (mục 6.6 — "Khi tải"): giải mã pixel từng layer (Worker, timeout),
@@ -23,17 +26,26 @@ export async function decodeLayerImages(
   codec: Pick<ImageCodec, 'decodeLayer'>,
   timeoutMs = LAYER_DECODE_TIMEOUT_MS,
   signal?: AbortSignal,
+  config?: MemoryBudgetConfig,
 ): Promise<DecodedLayers> {
+  preflightDocument(loaded.document, config);
   const images = new Map<ID, ImageData>();
   let failed = 0;
-  await Promise.all(
-    loaded.document.layers.map(async (layer) => {
-      if (signal?.aborted || layer.kind !== 'raster' || !layer.bounds) return;
+  let next = 0;
+  const aborted = () => signal?.aborted ?? false;
+  const run = async () => {
+    while (!aborted()) {
+      const layer = loaded.document.layers.at(next++);
+      if (!layer) return;
+      if (layer.kind !== 'raster' || !layer.bounds) continue;
       const record = loaded.blobs.get(layer.id);
       const bounds = layer.bounds;
-      if (record?.contentRev !== layer.contentRev) {
+      if (
+        record?.contentRev !== layer.contentRev ||
+        !matchesPng(record.png, bounds.width, bounds.height)
+      ) {
         failed++;
-        return;
+        continue;
       }
       const controller = new AbortController();
       const onAbort = () => {
@@ -44,20 +56,22 @@ export async function decodeLayerImages(
         controller.abort();
       }, timeoutMs);
       try {
-        const image = await codec.decodeLayer(record.png, controller.signal);
+        const image = await decodeLayerBounded(codec, record.png, controller.signal);
         if (image.width !== bounds.width || image.height !== bounds.height) {
           failed++;
-          return;
+          continue;
         }
-        images.set(layer.id, image);
+        if (!aborted()) images.set(layer.id, image);
       } catch {
         failed++;
       } finally {
         clearTimeout(timer);
         signal?.removeEventListener('abort', onAbort);
       }
-    }),
-  );
+    }
+  };
+  await Promise.all(Array.from({ length: MAX_LAYER_DECODES }, run));
+  if (signal?.aborted) images.clear();
   return { images, failed };
 }
 

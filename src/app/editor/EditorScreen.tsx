@@ -35,7 +35,6 @@ import { AppMark } from '@/app/shared/AppLogo';
 import { IconButton } from '@/app/shared/IconButton';
 import { Kbd } from '@/app/shared/Kbd';
 import { ThemeMenu } from '@/app/shared/ThemeMenu';
-import { repo } from '@/app/storage';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -72,6 +71,7 @@ import { setPanelVisible, usePanelVisibility } from './panelState';
 import { RightPanel } from './panels/RightPanel';
 import { PaintTargetDialog } from './PaintTargetDialog';
 import { ProjectMissing } from './ProjectMissing';
+import { CheckpointRecovery } from './CheckpointRecovery';
 import { SaveStatusIndicator } from './SaveStatusIndicator';
 import {
   formatTime,
@@ -99,9 +99,24 @@ function shortcutText(shortcut: string): string {
 }
 
 function ReadOnlyBanner() {
+  const project = useCurrentProject();
   const readOnly = useProjectStore((s) => s.readOnly);
   const takingOver = useProjectStore((s) => s.takingOver);
   if (!readOnly) return null;
+  if (project?.recovery)
+    return (
+      <div
+        role="status"
+        data-testid="recovery-protected"
+        className="pointer-events-auto flex flex-wrap items-center gap-3 rounded-xl border border-warning/40 bg-card/95 px-3 py-2 text-sm shadow-card"
+      >
+        <CheckpointRecovery
+          projectId={project.id}
+          checkpointAt={project.recovery.checkpointAt}
+          project={project}
+        />
+      </div>
+    );
   return (
     <div
       role="status"
@@ -625,13 +640,10 @@ function Centered({ children }: { children: React.ReactNode }) {
 function CorruptProject({
   projectId,
   checkpointAt,
-  onRetry,
 }: {
   projectId: string;
   checkpointAt: number | null;
-  onRetry: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
   return (
     <Centered>
       <div
@@ -645,21 +657,7 @@ function CorruptProject({
             : t.editor.corruptNoCheckpoint}
         </p>
         <div className="mt-2 flex gap-2">
-          {checkpointAt !== null && (
-            <Button
-              disabled={busy}
-              data-testid="open-checkpoint"
-              onClick={() => {
-                setBusy(true);
-                repo.restoreCheckpoint(projectId).then(onRetry, () => {
-                  setBusy(false);
-                  toast('error', t.projects.actionFailed);
-                });
-              }}
-            >
-              {t.editor.openCheckpoint}
-            </Button>
-          )}
+          <CheckpointRecovery projectId={projectId} checkpointAt={checkpointAt} />
           <Button
             variant="outline"
             onClick={() => {
@@ -728,16 +726,7 @@ export function EditorScreen({ projectId }: EditorScreenProps) {
     case 'missing':
       return <ProjectMissing />;
     case 'corrupt':
-      return (
-        <CorruptProject
-          projectId={projectId}
-          checkpointAt={current.checkpointAt}
-          onRetry={() => {
-            setResult(null);
-            setAttempt((n) => n + 1);
-          }}
-        />
-      );
+      return <CorruptProject projectId={projectId} checkpointAt={current.checkpointAt} />;
     case 'failed':
       return (
         <Centered>
@@ -746,7 +735,7 @@ export function EditorScreen({ projectId }: EditorScreenProps) {
             data-testid="project-failed"
           >
             <h1 className="text-lg font-semibold">{t.editor.failedTitle}</h1>
-            <p className="text-muted-foreground">{t.editor.failedBody}</p>
+            <p className="text-muted-foreground">{current.reason ?? t.editor.failedBody}</p>
             <div className="mt-2 flex gap-2">
               <Button
                 onClick={() => {

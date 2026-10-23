@@ -146,7 +146,8 @@ describe('History', () => {
   it('goTo dừng ở bước gặp lỗi, phần đã đi vẫn giữ', () => {
     const state = { value: 0 };
     const doc = fakeDoc();
-    const history = new History(budget());
+    const onChange = vi.fn();
+    const history = new History(budget(), { onChange });
     history.execute(counterCommand(state, 1), doc);
     const failing = counterCommand(state, 2);
     failing.undo = () => {
@@ -156,6 +157,10 @@ describe('History', () => {
     history.execute(counterCommand(state, 4), doc);
     expect(() => history.goTo(0, doc)).toThrow('hết bộ nhớ');
     expect(state.value).toBe(3);
+    expect(doc.rev).toBe(4);
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ position: 2, canRedo: true }),
+    );
   });
 
   it('chuỗi thu hồi của MemoryBudget bỏ bước cũ nhất (bước 5), giữ ≥ 10 bước', () => {

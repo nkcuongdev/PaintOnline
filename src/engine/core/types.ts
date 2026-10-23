@@ -690,6 +690,7 @@ export type SurfaceCategory = 'fixed' | 'layer' | 'history' | 'cache' | 'temp';
  * Thông báo cho người dùng. Engine chỉ phát mã; UI dịch sang chuỗi trong i18n/vi.ts.
  */
 export type NoticeCode =
+  | 'history.partial'
   | 'memory.refused'
   | 'document.tooLarge'
   | 'layer.locked'

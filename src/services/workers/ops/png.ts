@@ -207,6 +207,7 @@ function parsePng(bytes: Uint8Array): ParsedPng | null {
       throw new PngError(`CRC của ${type}`);
     }
     if (type === 'IHDR') {
+      if (seenHeader) throw new PngError('IHDR lặp lại');
       if (length !== 13) throw new PngError('IHDR');
       width = readU32(bytes, dataStart);
       height = readU32(bytes, dataStart + 4);

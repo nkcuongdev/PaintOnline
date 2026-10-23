@@ -1,5 +1,6 @@
 import * as v from 'valibot';
 import type { Rect } from '@/engine/core/types';
+import type { MemoryBudgetConfig } from '@/engine/core/types';
 import type { EncodedLayer, ProjectBundle } from '@/services/storage/projectRepo';
 import {
   documentRecordSchema,
@@ -14,6 +15,15 @@ import type { ImageCodec, ZipEntry } from '@/services/workers/codec';
 import { ZipError } from '@/services/workers/ops/zip';
 import { readDimensions, sniffFormat } from './imageHeader';
 import { MAX_PAINT_BYTES, MAX_PAINT_ENTRIES } from './paintLimits';
+import { detectMemoryConfig } from '@/services/platform/deviceTier';
+import { decodeLayerBounded } from './layerDecode';
+import {
+  MAX_MANIFEST_BYTES,
+  preflightDocument,
+  validThumbnail,
+  validStoredThumbnail,
+  DecodeBudgetError,
+} from './decodeBudget';
 
 /**
  * File `.paint` (mục 6.5): ZIP mở được bằng mọi công cụ giải nén.
@@ -93,6 +103,8 @@ export interface BuildOptions {
   /** Sharing copy: only the visible composite, without original/hidden editable data. */
   bakeRedactions: boolean;
   now?: number;
+  /** Already tracked live-engine bytes when building a disposable sharing copy. */
+  residentBytes?: number;
 }
 
 export async function buildProjectFile(
@@ -110,7 +122,7 @@ export async function buildProjectFile(
   // vectors, hidden content or the old thumbnail into the archive.
   if (options.bakeRedactions) {
     const { sharingBundle } = await import('./sharingBundle');
-    bundle = await sharingBundle(bundle, codec);
+    bundle = await sharingBundle(bundle, codec, options.residentBytes);
   }
   const required = new Set(
     bundle.document.layers.filter((l) => l.kind === 'raster' && l.bounds).map((l) => l.id),
@@ -138,6 +150,8 @@ export async function buildProjectFile(
       level: 6,
     },
   ];
+  if ((entries[0]?.data.byteLength ?? 0) > MAX_MANIFEST_BYTES)
+    throw new ProjectFileError('tooLarge');
   for (const layer of layers) {
     entries.push({
       path: `layers/${layer.layerId}.png`,
@@ -160,6 +174,7 @@ export async function buildProjectFile(
 
 /** Ảnh thu nhỏ trong DB có thể là WebP: file .paint luôn dùng thumbnail.png (mục 6.5). */
 async function thumbnailPng(image: StoredImage, codec: ImageCodec): Promise<Uint8Array | null> {
+  if (!validStoredThumbnail(image.data)) return null;
   if (image.type === 'image/png') return new Uint8Array(image.data);
   try {
     const bitmap = await createImageBitmap(new Blob([image.data], { type: image.type }));
@@ -191,29 +206,41 @@ export { isPaintFileName } from './clipboard';
  * Đọc và kiểm tra file .paint. Trả về dữ liệu sẵn sàng tạo project mới (id do người gọi cấp).
  * Ném ProjectFileError.
  */
-export async function readProjectFile(file: Blob, codec: ImageCodec): Promise<ImportedProject> {
+export async function readProjectFile(
+  file: Blob,
+  codec: ImageCodec,
+  memory?: MemoryBudgetConfig,
+): Promise<ImportedProject> {
   if (file.size === 0) throw new ProjectFileError('notPaintFile');
   if (file.size > MAX_PAINT_FILE_BYTES) throw new ProjectFileError('tooLarge');
-
-  let files: Map<string, Uint8Array>;
-  try {
-    files = await codec.unzip(new Uint8Array(await file.arrayBuffer()), ENTRY_PATTERN);
-  } catch (error) {
-    if (error instanceof ZipError) {
-      throw new ProjectFileError(
-        error.code === 'notZip'
-          ? 'notPaintFile'
-          : error.code === 'tooLarge' || error.code === 'tooManyEntries'
-            ? 'tooLarge'
-            : 'corrupt',
-        error,
-      );
+  const config = memory ?? detectMemoryConfig();
+  // Reserve input, inflated PNG buffers and worker return copies separately
+  // from the decoded-pixel estimate. Blob read happens only after this check.
+  const archiveBytes = Math.min(MAX_PAINT_BYTES, Math.floor(config.totalBytes / 8));
+  if (file.size > archiveBytes) throw new DecodeBudgetError('archive');
+  const unpack = async (accept: RegExp) => {
+    try {
+      return await codec.unzip(new Uint8Array(await file.arrayBuffer()), accept, archiveBytes);
+    } catch (error) {
+      if (error instanceof ZipError) {
+        throw new ProjectFileError(
+          error.code === 'notZip'
+            ? 'notPaintFile'
+            : error.code === 'tooLarge' || error.code === 'tooManyEntries'
+              ? 'tooLarge'
+              : 'corrupt',
+          error,
+        );
+      }
+      throw new ProjectFileError('corrupt', error);
     }
-    throw new ProjectFileError('corrupt', error);
-  }
-
-  const manifestBytes = files.get('manifest.json');
+  };
+  let files: Map<string, Uint8Array>;
+  files = await unpack(/^manifest\.json$/);
+  const manifestBytes = files.get('manifest.json')?.slice();
+  files.clear();
   if (!manifestBytes) throw new ProjectFileError('notPaintFile');
+  if (manifestBytes.byteLength > MAX_MANIFEST_BYTES) throw new ProjectFileError('tooLarge');
   let raw: unknown;
   try {
     raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes));
@@ -239,6 +266,18 @@ export async function readProjectFile(file: Blob, codec: ImageCodec): Promise<Im
     throw error;
   }
 
+  preflightDocument(document, { ...config, totalBytes: config.totalBytes - 3 * archiveBytes });
+  files = await unpack(ENTRY_PATTERN);
+  // Validate every header before the first decode, including unused thumbnail data.
+  for (const layer of document.layers) {
+    if (layer.kind !== 'raster' || !layer.bounds) continue;
+    const bytes = files.get(`layers/${layer.id}.png`);
+    const size = bytes && sniffFormat(bytes) === 'png' ? readDimensions(bytes, 'png') : null;
+    if (size?.width !== layer.bounds.width || size.height !== layer.bounds.height)
+      throw new ProjectFileError('invalidLayer');
+  }
+  const thumb = files.get('thumbnail.png');
+  if (thumb && !validThumbnail(copyBuffer(thumb))) throw new ProjectFileError('invalidLayer');
   const layers: EncodedLayer[] = [];
   for (const layer of document.layers) {
     if (layer.kind !== 'raster' || !layer.bounds) continue;
@@ -287,7 +326,7 @@ async function validateLayerPng(
     controller.abort();
   }, DECODE_TIMEOUT_MS);
   try {
-    const image = await codec.decodeLayer(png.slice(0), controller.signal);
+    const image = await decodeLayerBounded(codec, png, controller.signal);
     if (image.width !== bounds.width || image.height !== bounds.height) {
       throw new ProjectFileError('invalidLayer');
     }

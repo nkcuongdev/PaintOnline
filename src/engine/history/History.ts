@@ -152,18 +152,21 @@ export class History {
   goTo(position: number, doc: Document): number {
     const target = Math.max(0, Math.min(position, this.undoStack.length + this.redoStack.length));
     let moved = 0;
-    while (this.undoStack.length > target) {
-      if (!this.undoSilently(doc)) break;
-      moved++;
-    }
-    while (this.undoStack.length < target) {
-      if (!this.redoSilently(doc)) break;
-      moved++;
-    }
-    if (moved > 0) {
-      this.account();
-      this.trim();
-      this.changed();
+    try {
+      while (this.undoStack.length > target) {
+        if (!this.undoSilently(doc)) break;
+        moved++;
+      }
+      while (this.undoStack.length < target) {
+        if (!this.redoSilently(doc)) break;
+        moved++;
+      }
+    } finally {
+      if (moved > 0) {
+        this.account();
+        this.trim();
+        this.changed();
+      }
     }
     return moved;
   }

@@ -85,9 +85,37 @@ export function readDimensions(bytes: Uint8Array, format: ImageFormat): ImageSiz
     case 'jpeg':
       return jpegSize(bytes);
     case 'avif':
+      return avifSize(bytes);
     case 'svg':
       return null;
   }
+}
+
+/** ISO BMFF spatial extents, traversing only known container boxes. Use the
+ * largest item as a conservative admission bound (includes auxiliary images). */
+function avifSize(bytes: Uint8Array): ImageSize | null {
+  let size: ImageSize | null = null;
+  const scan = (start: number, end: number, depth: number): void => {
+    if (depth > 8) return;
+    for (let i = start; i + 8 <= end;) {
+      const length = u32be(bytes, i);
+      if (length < 8 || i + length > end) return;
+      const type = ascii(bytes, i + 4, 4);
+      if (type === 'ispe' && length >= 20) {
+        const found = valid(u32be(bytes, i + 12), u32be(bytes, i + 16));
+        if (found)
+          size = {
+            width: Math.max(size?.width ?? 0, found.width),
+            height: Math.max(size?.height ?? 0, found.height),
+          };
+      } else if (['meta', 'iprp', 'ipco'].includes(type)) {
+        scan(i + (type === 'meta' ? 12 : 8), i + length, depth + 1);
+      }
+      i += length;
+    }
+  };
+  scan(0, bytes.length, 0);
+  return size;
 }
 
 function valid(width: number, height: number): ImageSize | null {

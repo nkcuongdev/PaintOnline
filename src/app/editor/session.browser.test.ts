@@ -18,7 +18,12 @@ import {
   loadProject,
   saveCurrentProject,
 } from './session';
-import { exportProjectFile } from './actions';
+import { copyDegradedProject, exportProjectFile, saveLinkedFile } from './actions';
+import { copyCheckpoint, previewCheckpoint } from '@/services/storage/checkpointRecovery';
+import { connectEditor } from '@/app/engine-bridge';
+import { useDocumentStore } from '@/stores/document';
+import type { History } from '@/engine/history/History';
+import type { Command } from '@/engine/history/types';
 import { useUiStore } from '@/stores/ui';
 
 const init = {
@@ -236,6 +241,178 @@ async function start() {
   expect(await saveCurrentProject()).toBe(true);
   return getCurrentProject()!;
 }
+
+it('R03: corrupt PNG opens protected; close never replaces a good checkpoint or the original', async () => {
+  const p = await start();
+  drawStroke(p.editor, [
+    { x: 10, y: 20 },
+    { x: 50, y: 20 },
+  ]);
+  expect(await saveCurrentProject()).toBe(true);
+  expect(await closeCurrentProject()).toBe(true);
+  const db = await database.get();
+  const checkpoint = await db.get('checkpoints', p.id);
+  expect(checkpoint?.layers.length).toBe(1);
+  const loaded = await repo.loadProject(p.id);
+  const blob = [...loaded.blobs.values()][0];
+  await db.put('layerBlobs', { ...blob, png: new Uint8Array([1, 2, 3]).buffer });
+  const corrupt = await db.get('layerBlobs', [p.id, blob.layerId]);
+  expect((await loadProject(p.id)).status).toBe('ready');
+  expect(getCurrentProject()!.readOnly).toBe(true);
+  const queryPermission = vi.fn(() => {
+    throw new Error('Must not touch original linked file');
+  });
+  getCurrentProject()!.fileLink = {
+    name: 'good.paint',
+    handle: { queryPermission },
+    bakeRedactions: false,
+  };
+  expect(await saveLinkedFile(getCurrentProject()!)).toBe(false);
+  expect(queryPermission).not.toHaveBeenCalled();
+  checkpoint!.recoveryProtected = true;
+  expect(await getCurrentProject()!.autosave!.close()).toBe(true);
+  await repo.deleteCheckpoints({ automatic: true });
+  expect(await db.get('checkpoints', p.id)).toEqual(checkpoint);
+  expect(await repo.writeCheckpoint(p.id)).toEqual(checkpoint);
+  const preview = await previewCheckpoint(repo, p.id, mainThreadCodec);
+  const previewBitmap = await createImageBitmap(preview);
+  expect([previewBitmap.width, previewBitmap.height]).toEqual([64, 64]);
+  previewBitmap.close();
+  const checkpointCopy = await copyCheckpoint(repo, p.id, mainThreadCodec);
+  const degradedCopy = await copyDegradedProject(getCurrentProject()!);
+  expect(await saveCurrentProject()).toBe(false);
+  expect(await closeCurrentProject()).toBe(true);
+  expect(await db.get('checkpoints', p.id)).toEqual(checkpoint);
+  expect(await db.get('layerBlobs', [p.id, blob.layerId])).toEqual(corrupt);
+  expect((await loadProject(degradedCopy)).status).toBe('ready');
+  const degraded = getCurrentProject()!;
+  expect(degraded.readOnly).toBe(false);
+  drawStroke(degraded.editor, [
+    { x: 10, y: 40 },
+    { x: 50, y: 40 },
+  ]);
+  expect(await saveCurrentProject()).toBe(true);
+  expect(await closeCurrentProject()).toBe(true);
+  expect((await loadProject(checkpointCopy)).status).toBe('ready');
+  expect(getCurrentProject()!.readOnly).toBe(false);
+  expect(pixelAt(getCurrentProject()!.editor.readPixels(), 30, 20)[0]).toBeLessThan(10);
+  expect(await closeCurrentProject()).toBe(true);
+  expect(await db.get('checkpoints', p.id)).toEqual(checkpoint);
+  expect(await db.get('layerBlobs', [p.id, blob.layerId])).toEqual(corrupt);
+});
+
+it('R03: an unreadable checkpoint refuses preview/copy without writing either source', async () => {
+  const p = await start();
+  drawStroke(p.editor, [
+    { x: 10, y: 20 },
+    { x: 50, y: 20 },
+  ]);
+  expect(await closeCurrentProject()).toBe(true);
+  const db = await database.get();
+  const checkpoint = (await db.get('checkpoints', p.id))!;
+  checkpoint.layers[0].png = new Uint8Array([1, 2, 3]).buffer;
+  await db.put('checkpoints', checkpoint);
+  const count = (await repo.listProjects()).length;
+  await expect(copyCheckpoint(repo, p.id, mainThreadCodec)).rejects.toThrow('không đọc được');
+  await expect(previewCheckpoint(repo, p.id, mainThreadCodec)).rejects.toThrow('không đọc được');
+  expect((await repo.listProjects()).length).toBe(count);
+  expect(await db.get('checkpoints', p.id)).toEqual(checkpoint);
+});
+
+it('R03: failure committing a checkpoint copy rolls back without damaging recovery evidence', async () => {
+  const p = await start();
+  drawStroke(p.editor, [
+    { x: 10, y: 20 },
+    { x: 50, y: 20 },
+  ]);
+  expect(await closeCurrentProject()).toBe(true);
+  const db = await database.get();
+  const checkpoint = await db.get('checkpoints', p.id);
+  const count = (await repo.listProjects()).length;
+  database.faults = {
+    beforeCommit: ({ op, tx }) => {
+      if (op === 'create') {
+        tx.abort();
+        throw new DOMException('copy quota', 'QuotaExceededError');
+      }
+    },
+  };
+  await expect(copyCheckpoint(repo, p.id, mainThreadCodec)).rejects.toThrow('copy quota');
+  expect((await repo.listProjects()).length).toBe(count);
+  expect(await db.get('checkpoints', p.id)).toEqual(checkpoint);
+});
+
+it('R02: open refuses unsupported dimensions before fetching layer buffers, without consuming the source', async () => {
+  const p = await start();
+  expect(await closeCurrentProject()).toBe(true);
+  const db = await database.get();
+  const record = (await db.get('documents', p.id))!;
+  await db.put('documents', { ...record, width: 9000 });
+  const reads = vi.spyOn(IDBObjectStore.prototype, 'getAll');
+  const dimensions = await loadProject(p.id);
+  expect(dimensions.status).toBe('failed');
+  expect('reason' in dimensions ? dimensions.reason : '').toContain('giới hạn');
+  expect(
+    reads.mock.contexts.filter(
+      (store) => store instanceof IDBObjectStore && store.name === 'layerBlobs',
+    ),
+  ).toHaveLength(0);
+  expect(getCurrentProject()).toBeNull();
+  expect((await db.get('documents', p.id))?.width).toBe(9000);
+  await db.put('documents', record);
+  const meta = (await db.get('projects', p.id))!;
+  await db.put('projects', { ...meta, sizeBytes: 2 * 1024 ** 3 });
+  const buffers = await loadProject(p.id);
+  expect(buffers.status).toBe('failed');
+  expect('reason' in buffers ? buffers.reason : '').toContain('buffer');
+  expect(
+    reads.mock.contexts.filter(
+      (store) => store instanceof IDBObjectStore && store.name === 'layerBlobs',
+    ),
+  ).toHaveLength(0);
+  reads.mockRestore();
+  expect(await createProject(init)).not.toBeNull();
+});
+
+it.each(['undo', 'redo'] as const)(
+  'R04: partial %s reaches UI and real autosave, then survives reopen',
+  async (direction) => {
+    const p = await start();
+    p.editor.layers.add();
+    p.editor.layers.add();
+    if (direction === 'redo') p.editor.historyGoTo(0);
+    expect(await saveCurrentProject()).toBe(true);
+    const detachBridge = connectEditor(p.editor);
+    try {
+      const history = (p.editor as unknown as { history: History }).history;
+      const commands = history as unknown as { undoStack: Command[]; redoStack: Command[] };
+      const second = direction === 'undo' ? commands.undoStack.at(-2)! : commands.redoStack.at(-2)!;
+      const failure = vi
+        .spyOn(second, direction === 'undo' ? 'undo' : 'execute')
+        .mockImplementation(() => {
+          throw new SurfaceAllocationError(32, 32);
+        });
+      expect(p.editor.historyGoTo(direction === 'undo' ? 0 : 2)).toBe(true);
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+      expect(useDocumentStore.getState().doc?.layers).toHaveLength(2);
+      expect(useDocumentStore.getState().history.position).toBe(1);
+      expect(useProjectStore.getState().saveStatus?.kind).toBe('dirty');
+      const data = p.editor.serialize()!;
+      expect(await saveCurrentProject()).toBe(true);
+      expect((await repo.loadProject(p.id)).document.layers).toEqual(data.layers);
+      failure.mockRestore();
+      expect(await closeCurrentProject()).toBe(true);
+      expect((await loadProject(p.id)).status).toBe('ready');
+      expect(getCurrentProject()!.editor.serialize()!.layers).toEqual(data.layers);
+    } finally {
+      detachBridge();
+    }
+  },
+);
 afterEach(async () => {
   vi.restoreAllMocks();
   database.faults = null;

@@ -1,6 +1,7 @@
 import { Unzip, UnzipInflate, zipSync, type Zippable } from 'fflate';
 import { ZipError } from './zipError';
 import { MAX_PAINT_BYTES, MAX_PAINT_ENTRIES } from '@/services/io/paintLimits';
+import { MAX_MANIFEST_BYTES } from '@/services/io/decodeBudget';
 
 /**
  * Nén/giải nén ZIP cho file `.paint` (mục 6.5) — hàm thuần chạy trong Worker (có unit test).
@@ -78,6 +79,16 @@ export function unzipLimited(data: Uint8Array, limits: UnzipLimits): Map<string,
       return;
     }
     if (!limits.accept(file.name) || out.has(file.name)) return;
+    const entryLimit =
+      file.name === 'manifest.json'
+        ? MAX_MANIFEST_BYTES
+        : file.name === 'thumbnail.png'
+          ? 4 * 1024 * 1024
+          : limits.maxTotalBytes;
+    if (file.originalSize !== undefined && file.originalSize > entryLimit) {
+      state.failure = new ZipError('tooLarge');
+      return;
+    }
     const chunks: Uint8Array[] = [];
     let size = 0;
     file.ondata = (error, chunk, final) => {
@@ -88,7 +99,11 @@ export function unzipLimited(data: Uint8Array, limits: UnzipLimits): Map<string,
       }
       size += chunk.length;
       total += chunk.length;
-      if (total > limits.maxTotalBytes) {
+      if (
+        total > limits.maxTotalBytes ||
+        (file.name === 'manifest.json' && size > MAX_MANIFEST_BYTES) ||
+        (file.name === 'thumbnail.png' && size > 4 * 1024 * 1024)
+      ) {
         state.failure = new ZipError('tooLarge');
         file.terminate();
         return;
@@ -102,7 +117,9 @@ export function unzipLimited(data: Uint8Array, limits: UnzipLimits): Map<string,
 
   try {
     // Đẩy từng khối để dừng sớm khi vượt giới hạn (không giải nén cả file một lần).
-    const block = 1 << 20;
+    // A compressed input chunk may expand ~1000x before ondata gets control.
+    // Small chunks also bound transient inflation for forged/unknown ZIP sizes.
+    const block = 1024;
     for (let offset = 0; offset < data.length && !state.failure; offset += block) {
       const end = Math.min(data.length, offset + block);
       unzip.push(data.subarray(offset, end), end === data.length);

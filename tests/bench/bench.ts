@@ -25,8 +25,10 @@ import { Database } from '@/services/storage/db';
 import { ProjectRepository } from '@/services/storage/projectRepo';
 import { decodeLayerImages, documentSpecFromRecord } from '@/services/storage/restore';
 import { sharedWorkerPool } from '@/services/workers/pool';
+import type { measureSharing } from './round3';
 
 export interface ScenarioResult {
+  sharing?: Awaited<ReturnType<typeof measureSharing>>;
   scenario: string;
   document: string;
   layers: number;
@@ -411,7 +413,7 @@ async function measureSave(
     const saveIncMs = performance.now() - t;
 
     t = performance.now();
-    const loaded = await repo.loadProject(projectId);
+    const loaded = await repo.loadProject(projectId, TIER_BUDGETS.desktop);
     const tLoad = performance.now();
     const { images } = await decodeLayerImages(loaded, sharedWorkerPool());
     const tDecode = performance.now();
@@ -438,7 +440,12 @@ async function measureSave(
     };
   } finally {
     autosave.dispose();
-    await db.destroy();
+    if (new URLSearchParams(location.search).has('round3')) {
+      (
+        window as unknown as { __round3Stored: { database: string; projectId: string } }
+      ).__round3Stored = { database: db.name, projectId };
+      await db.close();
+    } else await db.destroy();
   }
 }
 
@@ -1017,6 +1024,8 @@ async function runScenario(
     switchMs: Math.round(switchMs * 10) / 10,
     switchWarmMs,
   };
+  if (params.has('round3'))
+    result.sharing = await (await import('./round3')).measureSharing(editor);
   editor.dispose();
   host.replaceChildren();
   return result;
@@ -1024,6 +1033,13 @@ async function runScenario(
 
 async function main(): Promise<void> {
   const params = new URLSearchParams(location.search);
+  if (params.has('openbench')) {
+    const results = await (
+      await import('./round3')
+    ).measureOpen(params.get('database') ?? '', params.get('projectId') ?? '');
+    (window as unknown as { __benchResults: typeof results }).__benchResults = results;
+    return;
+  }
   const filters = params.get('filters')?.split('x').map(Number);
   if (filters) {
     const results = await runFilters(filters[0] ?? 3840, filters[1] ?? 2160, filters[2] ?? 5);

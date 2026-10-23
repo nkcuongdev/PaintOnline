@@ -14,6 +14,16 @@ function randomImage(width: number, height: number, seed = 1): Uint8ClampedArray
   return data;
 }
 
+it('rejects a second valid IHDR before it can change the admitted allocation size', () => {
+  const first = encodePng(new Uint8Array(4), 1, 1);
+  const second = encodePng(new Uint8Array(16), 2, 2);
+  const bytes = new Uint8Array(first.length + 25);
+  bytes.set(first.subarray(0, 33));
+  bytes.set(second.subarray(8, 33), 33);
+  bytes.set(first.subarray(33), 58);
+  expect(() => decodePng(bytes)).toThrow('IHDR lặp lại');
+});
+
 /** PNG RGBA 8 bit dựng tay với bộ lọc chỉ định cho từng dòng (tham chiếu theo đặc tả PNG). */
 function pngWithFilters(
   rgba: Uint8ClampedArray,

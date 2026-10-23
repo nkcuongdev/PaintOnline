@@ -205,9 +205,13 @@ export class WorkerPool implements WorkerClient, ImageCodec {
     ) as Promise<Uint8Array>;
   }
 
-  async unzip(data: Uint8Array, accept: RegExp): Promise<Map<string, Uint8Array>> {
+  async unzip(
+    data: Uint8Array,
+    accept: RegExp,
+    maxTotalBytes?: number,
+  ): Promise<Map<string, Uint8Array>> {
     const result = (await this.enqueue((api) =>
-      api.unzip(transfer(data, [data.buffer as ArrayBuffer]), accept.source),
+      api.unzip(transfer(data, [data.buffer as ArrayBuffer]), accept.source, maxTotalBytes),
     )) as Awaited<ReturnType<ImageWorkerApi['unzip']>>;
     if (!result.ok) throw new ZipError(result.code);
     return new Map(Object.entries(result.files));

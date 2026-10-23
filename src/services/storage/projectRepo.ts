@@ -1,6 +1,11 @@
 import type { IDBPTransaction, StoreNames } from 'idb';
-import type { Color, ID, Rect } from '@/engine/core/types';
+import type { Color, ID, Rect, MemoryBudgetConfig } from '@/engine/core/types';
 import { broadcast } from './channel';
+import {
+  DecodeBudgetError,
+  preflightDocument,
+  validStoredThumbnail,
+} from '@/services/io/decodeBudget';
 import type { Database, PaintDB } from './db';
 import {
   parseDocumentRecord,
@@ -150,27 +155,25 @@ export class ProjectRepository {
 
   async getThumbnail(projectId: ID): Promise<StoredImage | null> {
     const db = await this.db.get();
-    return (await db.get('thumbnails', projectId))?.image ?? null;
+    const image = (await db.get('thumbnails', projectId))?.image;
+    return image && validStoredThumbnail(image.data) ? image : null;
   }
 
   /**
    * Đọc bản lưu hiện tại: metadata, document (đã validate), pixel từng layer. Ném
    * ProjectNotFoundError hoặc CorruptProjectError (kèm cờ có checkpoint để UI đề nghị mở).
    */
-  async loadProject(projectId: ID): Promise<LoadedProject> {
+  async loadProject(projectId: ID, memory?: MemoryBudgetConfig): Promise<LoadedProject> {
     const db = await this.db.get();
     const tx = db.transaction(
       ['projects', 'documents', 'layerBlobs', 'thumbnails', 'checkpoints'],
       'readonly',
     );
-    const [meta, rawDocument, blobs, thumbnail, checkpointKey] = await Promise.all([
+    const [meta, rawDocument, checkpointKey] = await Promise.all([
       tx.objectStore('projects').get(projectId),
       tx.objectStore('documents').get(projectId),
-      tx.objectStore('layerBlobs').getAll(projectBlobRange(projectId)),
-      tx.objectStore('thumbnails').get(projectId),
       tx.objectStore('checkpoints').getKey(projectId),
     ]);
-    await tx.done;
     if (!meta) throw new ProjectNotFoundError(projectId);
     if (meta.deletedAt !== undefined) throw new ProjectNotFoundError(projectId, 'deleted');
     let document: DocumentRecord;
@@ -180,6 +183,25 @@ export class ProjectRepository {
     } catch (error) {
       throw new CorruptProjectError(projectId, checkpointKey !== undefined, error);
     }
+    // Opening performs admission before reading every encoded pixel buffer.
+    // Both reads stay in this same readonly transaction/snapshot.
+    if (memory) {
+      if (
+        !Number.isFinite(meta.sizeBytes) ||
+        meta.sizeBytes < 0 ||
+        meta.sizeBytes > memory.totalBytes / 4
+      )
+        throw new DecodeBudgetError('archive');
+      preflightDocument(document, {
+        ...memory,
+        totalBytes: memory.totalBytes - 2 * meta.sizeBytes,
+      });
+    }
+    const [blobs, thumbnail] = await Promise.all([
+      tx.objectStore('layerBlobs').getAll(projectBlobRange(projectId)),
+      tx.objectStore('thumbnails').get(projectId),
+    ]);
+    await tx.done;
     return {
       meta,
       document,
@@ -578,6 +600,11 @@ export class ProjectRepository {
         await tx.done;
         return null;
       }
+      const previous = await tx.objectStore('checkpoints').get(projectId);
+      if (previous?.recoveryProtected) {
+        await tx.done;
+        return previous;
+      }
       const blobs = await tx.objectStore('layerBlobs').getAll(projectBlobRange(projectId));
       const checkpoint: CheckpointRecord = {
         projectId,
@@ -610,6 +637,37 @@ export class ProjectRepository {
     const db = await this.db.get();
     const checkpoint = await db.get('checkpoints', projectId);
     return checkpoint ? { rev: checkpoint.rev, createdAt: checkpoint.createdAt } : null;
+  }
+
+  /** Pin good recovery evidence before publishing a damaged source. The flag is
+   * persisted so a different tab's quota cleanup cannot silently delete it. */
+  async protectCheckpoint(projectId: ID): Promise<void> {
+    const db = await this.db.get();
+    const tx = db.transaction('checkpoints', 'readwrite');
+    const checkpoint = await tx.store.get(projectId);
+    if (checkpoint && !checkpoint.recoveryProtected)
+      await tx.store.put({ ...checkpoint, recoveryProtected: true });
+    await tx.done;
+  }
+
+  /** Read-only recovery source. Never changes the original or its checkpoint. */
+  async readCheckpointBundle(projectId: ID): Promise<ProjectBundle> {
+    const db = await this.db.get();
+    const tx = db.transaction(['projects', 'checkpoints'], 'readonly');
+    const [meta, checkpoint] = await Promise.all([
+      tx.objectStore('projects').get(projectId),
+      tx.objectStore('checkpoints').get(projectId),
+    ]);
+    await tx.done;
+    if (!meta || !checkpoint) throw new ProjectNotFoundError(projectId);
+    const document = parseDocumentRecord(checkpoint.document);
+    preflightDocument(document);
+    return {
+      meta: { name: `${meta.name} — checkpoint`, mode: meta.mode },
+      document,
+      layers: checkpoint.layers,
+      thumbnail: null,
+    };
   }
 
   /**
@@ -645,11 +703,18 @@ export class ProjectRepository {
   }
 
   /** Xóa checkpoint (thứ bị xóa đầu tiên khi thiếu dung lượng). Trả về số checkpoint đã xóa. */
-  async deleteCheckpoints(): Promise<number> {
+  async deleteCheckpoints(options: { automatic?: boolean } = {}): Promise<number> {
     const db = await this.db.get();
     const tx = db.transaction('checkpoints', 'readwrite');
-    const count = await tx.store.count();
-    await tx.store.clear();
+    let count = 0;
+    let cursor = await tx.store.openCursor();
+    while (cursor) {
+      if (!options.automatic || !cursor.value.recoveryProtected) {
+        await cursor.delete();
+        count++;
+      }
+      cursor = await cursor.continue();
+    }
     await tx.done;
     if (count > 0) broadcast({ type: 'storage-freed' }, { local: true });
     return count;

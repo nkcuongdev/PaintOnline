@@ -36,7 +36,7 @@ export interface ImageCodec {
   encodeWebp(bitmap: ImageBitmap, quality: number): Promise<Blob>;
   zip(entries: ZipEntry[]): Promise<Uint8Array>;
   /** Giải nén có giới hạn (mục 10.2); ném ZipError. */
-  unzip(data: Uint8Array, accept: RegExp): Promise<Map<string, Uint8Array>>;
+  unzip(data: Uint8Array, accept: RegExp, maxTotalBytes?: number): Promise<Map<string, Uint8Array>>;
   /** Màu chủ đạo của ảnh mẫu đã thu nhỏ (bảng màu project — mục 7.6). Bitmap bị đóng. */
   palette(bitmap: ImageBitmap): Promise<Color[]>;
 }
@@ -50,9 +50,13 @@ export const mainThreadCodec: ImageCodec = {
   decode: (blob, options) => decodeBlob(blob, options),
   encodeWebp: (bitmap, quality) => encodeWebpWasm(bitmapToImageData(bitmap), quality),
   zip: (entries) => Promise.resolve(zipEntries(entries)),
-  unzip: (data, accept) =>
+  unzip: (data, accept, maxTotalBytes = DEFAULT_UNZIP_LIMITS.maxTotalBytes) =>
     Promise.resolve(
-      unzipLimited(data, { ...DEFAULT_UNZIP_LIMITS, accept: (path) => accept.test(path) }),
+      unzipLimited(data, {
+        ...DEFAULT_UNZIP_LIMITS,
+        maxTotalBytes,
+        accept: (path) => accept.test(path),
+      }),
     ),
   palette: (bitmap) => Promise.resolve(paletteOfBitmap(bitmap)),
 };

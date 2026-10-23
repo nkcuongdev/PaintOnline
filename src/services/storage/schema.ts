@@ -122,6 +122,8 @@ export interface CheckpointLayer {
 
 /** Bản sao đầy đủ một revision cũ — dự phòng khi bản hiện tại hỏng (mục 6.6). */
 export interface CheckpointRecord {
+  /** Recovery evidence: excluded from automatic quota cleanup/replacement. */
+  recoveryProtected?: boolean;
   projectId: ID;
   rev: number;
   createdAt: number;

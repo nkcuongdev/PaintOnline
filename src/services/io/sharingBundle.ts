@@ -6,27 +6,35 @@ import { RECORD_SCHEMA_VERSION } from '@/services/storage/schema';
 import type { ProjectBundle } from '@/services/storage/projectRepo';
 import type { ImageCodec } from '@/services/workers/codec';
 import { sharedWorkerPool } from '@/services/workers/pool';
+import { matchesPng, preflightDocument } from './decodeBudget';
+import { decodeLayerBounded } from './layerDecode';
 
 /** Build a disposable rendering copy; never flatten or save the user's editor. */
 export async function sharingBundle(
   bundle: ProjectBundle,
   codec: ImageCodec,
+  residentBytes = 0,
 ): Promise<ProjectBundle> {
   const record = { ...bundle.document, layers: bundle.document.layers.filter((l) => l.visible) };
+  const memory = detectMemoryConfig();
+  memory.totalBytes = Math.max(0, memory.totalBytes - residentBytes);
+  preflightDocument(record, memory);
   const images = new Map<string, ImageData>();
   // Decode only visible content, sequentially. Missing/broken inputs must fail closed.
   for (const layer of record.layers) {
     if (layer.kind !== 'raster' || !layer.bounds) continue;
     const encoded = bundle.layers.find((l) => l.layerId === layer.id);
     if (encoded?.contentRev !== layer.contentRev) throw new Error('Missing sharing layer');
-    const image = await codec.decodeLayer(encoded.png.slice(0));
+    if (!matchesPng(encoded.png, layer.bounds.width, layer.bounds.height))
+      throw new Error('Invalid sharing layer');
+    const image = await decodeLayerBounded(codec, encoded.png);
     if (image.width !== layer.bounds.width || image.height !== layer.bounds.height) {
       throw new Error('Invalid sharing layer');
     }
     images.set(layer.id, image);
   }
   const editor = new Editor({
-    memory: detectMemoryConfig(),
+    memory,
     platform: platformFeatures,
     workers: sharedWorkerPool(),
   });

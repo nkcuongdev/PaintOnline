@@ -126,11 +126,16 @@ const api = {
   },
 
   /** `accept`: biểu thức chính quy (dạng chuỗi) của đường dẫn cần giải nén. */
-  unzip(data: Uint8Array, accept: string): UnzipResult {
+  unzip(
+    data: Uint8Array,
+    accept: string,
+    maxTotalBytes = DEFAULT_UNZIP_LIMITS.maxTotalBytes,
+  ): UnzipResult {
     const pattern = new RegExp(accept);
     try {
       const files = unzipLimited(data, {
         ...DEFAULT_UNZIP_LIMITS,
+        maxTotalBytes: Math.min(DEFAULT_UNZIP_LIMITS.maxTotalBytes, maxTotalBytes),
         accept: (path) => pattern.test(path),
       });
       // Mỗi file một buffer riêng (mục lưu nguyên có thể là view chung một buffer) rồi chuyển.

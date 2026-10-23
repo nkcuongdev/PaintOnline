@@ -6,6 +6,8 @@ import {
   type ImageFormat,
   type ImageSize,
 } from './imageHeader';
+import { svgViewport } from './svgPreflight';
+import { detectMemoryConfig } from '@/services/platform/deviceTier';
 
 /**
  * Mở ảnh từ file, kéo thả, clipboard một cách an toàn (mục 10.2): mọi file coi là không đáng tin.
@@ -27,7 +29,13 @@ export const MAX_IMAGE_SIDE = 16384;
 export const DECODE_TIMEOUT_MS = 10_000;
 
 export type ImportErrorCode =
-  'empty' | 'unsupported' | 'fileTooLarge' | 'dimensionsTooLarge' | 'decodeFailed' | 'timeout';
+  | 'empty'
+  | 'unsupported'
+  | 'fileTooLarge'
+  | 'dimensionsTooLarge'
+  | 'decodeFailed'
+  | 'timeout'
+  | 'unknownDimensions';
 
 export class ImportError extends Error {
   constructor(readonly code: ImportErrorCode) {
@@ -89,16 +97,26 @@ function withTimeout<T>(run: (signal: AbortSignal) => Promise<T>, ms: number): P
  * SVG chỉ được rasterize qua <img> từ blob URL — không bao giờ chèn vào DOM nên script và tài
  * nguyên ngoài trong SVG không chạy (mục 10.2).
  */
-async function decodeSvg(blob: Blob): Promise<ImageBitmap> {
+async function decodeSvg(blob: Blob, target: ImageSize, signal: AbortSignal): Promise<ImageBitmap> {
+  const aborted = () => signal.aborted;
   const url = URL.createObjectURL(new Blob([blob], { type: IMAGE_MIME.svg }));
   try {
     const img = new Image();
+    img.width = target.width;
+    img.height = target.height;
     img.decoding = 'async';
     img.src = url;
     await img.decode();
-    const width = img.naturalWidth || 1024;
-    const height = img.naturalHeight || 1024;
-    return await createImageBitmap(img, { resizeWidth: width, resizeHeight: height });
+    if (aborted()) throw new ImportError('timeout');
+    const bitmap = await createImageBitmap(img, {
+      resizeWidth: target.width,
+      resizeHeight: target.height,
+    });
+    if (aborted()) {
+      bitmap.close();
+      throw new ImportError('timeout');
+    }
+    return bitmap;
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -112,26 +130,55 @@ export async function decodeImage(
   if (blob.size === 0) throw new ImportError('empty');
   if (blob.size > MAX_FILE_BYTES) throw new ImportError('fileTooLarge');
 
-  const head = new Uint8Array(await blob.slice(0, 64 * 1024).arrayBuffer());
+  let head = new Uint8Array(await blob.slice(0, 64 * 1024).arrayBuffer());
   const format = sniffFormat(head);
   if (!format) throw new ImportError('unsupported');
 
-  const rawSize = readDimensions(head, format);
+  // Larger JPEG metadata/AVIF container can hide dimensions beyond the prefix.
+  // Bound header parsing; refuse unknown dimensions instead of decoding blindly.
+  if ((format === 'jpeg' && !readDimensions(head, format)) || format === 'avif')
+    head = new Uint8Array(await blob.slice(0, 2 * 1024 * 1024).arrayBuffer());
+  let rawSize = readDimensions(head, format);
+  let svg: ReturnType<typeof svgViewport> = null;
+  if (format === 'svg') {
+    if (blob.size > 2 * 1024 * 1024) throw new ImportError('fileTooLarge');
+    svg = svgViewport(await blob.text());
+    rawSize = svg?.size ?? null;
+  }
+  if (!rawSize) throw new ImportError('unknownDimensions');
   const orientation = format === 'jpeg' ? readJpegOrientation(head) : 1;
   const declared =
-    rawSize && orientation !== null && orientation >= 5
+    orientation !== null && orientation >= 5
       ? { width: rawSize.height, height: rawSize.width }
       : rawSize;
-  if (declared && (declared.width > MAX_IMAGE_SIDE || declared.height > MAX_IMAGE_SIDE)) {
+  if (declared.width > MAX_IMAGE_SIDE || declared.height > MAX_IMAGE_SIDE) {
     throw new ImportError('dimensionsTooLarge');
+  }
+  // Even native resize can allocate a full source bitmap internally. Cap the
+  // source pixels before calling it; large photos remain supported within this cap.
+  if (
+    rawSize.width * rawSize.height >
+    Math.min(MAX_IMAGE_SIDE ** 2, limits.maxPixels * 4, detectMemoryConfig().totalBytes / 16)
+  )
+    throw new ImportError('dimensionsTooLarge');
+  const svgTarget = svg ? (fitWithin(svg.size, limits) ?? svg.size) : null;
+  if (svg && svgTarget) {
+    svg.root.setAttribute('width', String(svgTarget.width));
+    svg.root.setAttribute('height', String(svgTarget.height));
+    svg.root.style.setProperty('width', `${String(svgTarget.width)}px`, 'important');
+    svg.root.style.setProperty('height', `${String(svgTarget.height)}px`, 'important');
+    // Rasterize at the admitted viewport, with the original coordinate system.
+    if (!svg.root.hasAttribute('viewBox'))
+      svg.root.setAttribute('viewBox', `0 0 ${String(svg.size.width)} ${String(svg.size.height)}`);
+    blob = new Blob([new XMLSerializer().serializeToString(svg.root)], { type: IMAGE_MIME.svg });
   }
 
   const decode = async (signal: AbortSignal): Promise<ImageBitmap> => {
-    if (format === 'svg') return decodeSvg(blob);
+    if (format === 'svg' && svgTarget) return decodeSvg(blob, svgTarget, signal);
     // Gắn MIME đúng theo magic bytes; xoay theo EXIF (ảnh chụp điện thoại — mục 10.1).
     const typed =
       blob.type === IMAGE_MIME[format] ? blob : new Blob([blob], { type: IMAGE_MIME[format] });
-    const target = declared && orientation !== null ? fitWithin(declared, limits) : null;
+    const target = orientation !== null ? fitWithin(declared, limits) : null;
     if (decoder) {
       try {
         return await decoder.decode(
@@ -161,7 +208,14 @@ export async function decodeImage(
 
   let bitmap: ImageBitmap;
   try {
-    bitmap = await withTimeout(decode, DECODE_TIMEOUT_MS);
+    bitmap = await withTimeout(async (signal) => {
+      const result = await decode(signal);
+      if (signal.aborted) {
+        result.close();
+        throw new ImportError('timeout');
+      }
+      return result;
+    }, DECODE_TIMEOUT_MS);
   } catch (error) {
     if (error instanceof ImportError) throw error;
     throw new ImportError('decodeFailed');
@@ -189,7 +243,7 @@ export async function decodeImage(
       bitmap.close();
       throw new ImportError('dimensionsTooLarge');
     }
-  } else if (declared && (declared.width !== bitmap.width || declared.height !== bitmap.height)) {
+  } else if (declared.width !== bitmap.width || declared.height !== bitmap.height) {
     scaled = declared.width * declared.height > bitmap.width * bitmap.height;
   }
 

@@ -700,6 +700,8 @@ export const vi = {
   },
 
   notices: {
+    'history.partial':
+      'Lịch sử dừng ở bước vừa khôi phục vì thiếu bộ nhớ. Bạn có thể tiếp tục chỉnh sửa hoặc lưu trạng thái này.',
     'memory.refused':
       'Không đủ bộ nhớ cho thao tác này. Hãy gộp bớt layer, giảm kích thước ảnh hoặc đóng project khác.',
     'memory.layersFull':
@@ -845,11 +847,21 @@ export const vi = {
     editorLabel: 'Nhập chữ chú thích',
   },
 
+  checkpointRecovery: {
+    protected: 'Có layer không đọc được. Bản gốc đang được bảo vệ, chỉ đọc.',
+    view: 'Xem checkpoint',
+    copy: 'Khôi phục thành bản sao',
+    copyDegraded: 'Chỉnh sửa bản sao thiếu layer',
+    hint: 'Xem bản lưu dự phòng trước khi khôi phục. Bản sao có ID mới; project gốc và checkpoint vẫn được giữ nguyên.',
+    failed: 'Không đọc được checkpoint. Dữ liệu gốc vẫn được giữ nguyên.',
+  },
   importErrors: {
+    unknownDimensions:
+      'Không xác định được kích thước ảnh an toàn trước giải mã hoặc SVG chứa tài nguyên/hiệu ứng chưa hỗ trợ. Hãy chuyển sang PNG/JPEG rồi thử lại.',
     empty: 'File rỗng.',
     unsupported: 'Định dạng không được hỗ trợ. Hãy dùng PNG, JPG, WebP, GIF, BMP hoặc SVG.',
     fileTooLarge: 'File quá lớn (tối đa 50 MB).',
-    dimensionsTooLarge: 'Ảnh quá lớn (tối đa 16384 px mỗi cạnh).',
+    dimensionsTooLarge: 'Ảnh vượt giới hạn kích thước hoặc ngân sách giải mã an toàn của thiết bị.',
     decodeFailed: 'Không đọc được ảnh — file có thể bị hỏng.',
     timeout: 'Giải mã ảnh quá lâu nên đã dừng.',
     noImageInClipboard: 'Clipboard không có ảnh. Hãy chụp màn hình rồi nhấn {shortcut} lại.',

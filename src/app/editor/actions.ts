@@ -19,6 +19,7 @@ import {
   type ImageExportOptions,
 } from '@/services/io/exportImage';
 import { decodeImage, ImportError, nameFromFile } from '@/services/io/importImage';
+import { DecodeBudgetError } from '@/services/io/decodeBudget';
 import { detectMemoryConfig } from '@/services/platform/deviceTier';
 import { platformFeatures } from '@/services/platform/features';
 import type { EncodedLayer, ProjectBundle } from '@/services/storage/projectRepo';
@@ -247,6 +248,12 @@ async function bundleFromEditor(project: OpenProject): Promise<ProjectBundle> {
   };
 }
 
+export async function copyDegradedProject(project: OpenProject): Promise<string> {
+  if (!project.recovery) throw new Error('Project is not in recovery');
+  const { copyRecoveredBundle } = await import('@/services/storage/checkpointRecovery');
+  return copyRecoveredBundle(repo, await bundleFromEditor(project));
+}
+
 /** Module file .paint (valibot, fflate) chỉ tải khi xuất/nhập — giữ JS khởi động nhỏ (mục 11.3). */
 function projectFileModule() {
   return import('@/services/io/projectFile');
@@ -268,6 +275,7 @@ export async function exportProjectFile(
     const blob = await buildProjectFile(bundle, codec(), {
       appVersion: APP_VERSION,
       bakeRedactions: options.bakeRedactions,
+      residentBytes: getCurrentProject()?.editor.memory.usedBytes ?? 0,
     });
     if (options.handle) {
       // "Lưu ra file" (Chromium): ghi vào file đã chọn và gắn file với project cho Ctrl+S sau này.
@@ -318,6 +326,7 @@ export function saveProjectToFile(project: OpenProject): void {
  * nếu trình duyệt yêu cầu (sau khi tải lại trang). Trả false nếu không ghi được.
  */
 export async function saveLinkedFile(project: OpenProject): Promise<boolean> {
+  if (project.recovery) return false;
   const link = project.fileLink;
   if (!link) return false;
   const handle = link.handle as SaveFileHandle;
@@ -330,6 +339,7 @@ export async function saveLinkedFile(project: OpenProject): Promise<boolean> {
     const blob = await buildProjectFile(await bundleFromEditor(project), codec(), {
       appVersion: APP_VERSION,
       bakeRedactions: link.bakeRedactions,
+      residentBytes: getCurrentProject()?.editor.memory.usedBytes ?? 0,
     });
     await writeFile(handle, blob);
     if (storageReady()) await repo.markExported(project.id).catch(() => undefined);
@@ -364,7 +374,12 @@ export async function importProjectFile(file: Blob): Promise<boolean> {
   }
   const { readProjectFile, ProjectFileError } = await projectFileModule();
   try {
-    const imported = await readProjectFile(file, codec());
+    const memory = detectMemoryConfig();
+    const resident = getCurrentProject()?.editor.memory.usedBytes ?? 0;
+    const imported = await readProjectFile(file, codec(), {
+      ...memory,
+      totalBytes: Math.max(0, memory.totalBytes - resident),
+    });
     const id = crypto.randomUUID();
     await repo.createProject(id, {
       ...imported,
@@ -374,7 +389,9 @@ export async function importProjectFile(file: Blob): Promise<boolean> {
     navigate({ name: 'project', projectId: id });
     return true;
   } catch (error) {
-    if (error instanceof ProjectFileError) {
+    if (error instanceof DecodeBudgetError) {
+      toast('error', error.message);
+    } else if (error instanceof ProjectFileError) {
       toast('error', t.projectFile.errors[error.code]);
     } else if (isQuotaError(error)) {
       toast('error', t.storage.quotaImport);

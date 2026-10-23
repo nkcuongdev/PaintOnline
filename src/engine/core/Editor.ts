@@ -890,19 +890,25 @@ export class Editor {
     if (position === this.history.summary().position) return false;
     this.textSession.cancel();
     this.selectionManager.cancelFloating();
-    let moved = 0;
+    const beforeRev = doc.rev;
+    let unexpected: Error | undefined;
     try {
-      moved = this.history.goTo(position, doc);
+      this.history.goTo(position, doc);
     } catch (error) {
-      if (!isAllocationError(error)) throw error;
-      this.notify('memory.refused');
+      if (isAllocationError(error))
+        this.notify(doc.rev === beforeRev ? 'memory.refused' : 'history.partial');
+      else unexpected = error instanceof Error ? error : new Error(String(error), { cause: error });
     }
-    if (moved === 0) return false;
+    if (doc.rev === beforeRev) {
+      if (unexpected) throw unexpected;
+      return false;
+    }
     this.syncGeometry();
     this.renderer.contentChanged(null);
     this.renderer.invalidate();
     this.objectController.prune();
     this.emitDocument(true);
+    if (unexpected) throw unexpected;
     return true;
   }
 
