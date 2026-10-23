@@ -1,4 +1,5 @@
 import type { Document } from '../core/Document';
+import { MAX_DOCUMENT_LAYERS } from '../core/limits';
 import { BLEND_MODES, type ID, type NoticeCode, type Rect } from '../core/types';
 import {
   AddLayerCommand,
@@ -73,6 +74,10 @@ export class LayerManager {
   add(kind: 'raster' | 'vector' = 'raster'): ID | null {
     const doc = this.host.document();
     if (!doc) return null;
+    if (doc.layers.length >= MAX_DOCUMENT_LAYERS) {
+      this.host.notify('layer.limit');
+      return null;
+    }
     this.host.settle();
     const name = this.uniqueName(doc, kind);
     const layer =
@@ -93,6 +98,10 @@ export class LayerManager {
     const doc = this.host.document();
     const source = doc?.getLayer(id);
     if (!doc || !source) return null;
+    if (doc.layers.length >= MAX_DOCUMENT_LAYERS) {
+      this.host.notify('layer.limit');
+      return null;
+    }
     this.host.settle();
     const init = {
       name: this.host.copyName(source.name).slice(0, MAX_LAYER_NAME),
@@ -209,6 +218,11 @@ export class LayerManager {
     if (hasRedactions(upper) || hasRedactions(lower)) return 'layer.redactionProtected';
     if (upper.locked || lower.locked) return 'layer.locked';
     if (!upper.visible || !lower.visible) return 'layer.hidden';
+    // Blend modes and backdrop effects cannot in general be represented by one
+    // source-over layer without also baking unrelated layers below the pair.
+    if (this.needsBackdrop(lower, upper) && index !== 1) {
+      return 'layer.mergeBackdrop';
+    }
     return null;
   }
 
@@ -232,6 +246,51 @@ export class LayerManager {
     if (!upper || !lower) return false;
     this.host.settle();
     const label = 'history.mergeDown';
+
+    if (this.needsBackdrop(lower, upper)) {
+      // Bake BOTH layer opacities into a neutral result. Painting upper into lower
+      // would apply lower.opacity to upper a second time on the next composite.
+      const merged = new RasterLayer(
+        { id: lower.id, name: lower.name, alphaLocked: lower.alphaLocked },
+        this.host.memory,
+        doc.bounds,
+      );
+      try {
+        const bounds = [lower, upper].map((l) => layerContentBounds(l, this.host.env));
+        const area = bounds.reduce<Rect | null>(
+          (a, b) => (b ? (a ? unionRect(a, b) : b) : a),
+          doc.background.kind === 'color' ? doc.bounds : null,
+        );
+        const region = area ? intersectRect(roundOutRect(area), doc.bounds) : null;
+        if (region && !isEmptyRect(region) && merged.surface.ensure(region)) {
+          const session = merged.surface.begin();
+          if (session) {
+            // The lowest pair has no unrelated layer backdrop. Include the document
+            // background to preserve exact 8-bit rounding as well as blend results.
+            compositeDocument(session.ctx, doc, {
+              ...this.compositeOptions(region),
+              includeBackground: true,
+              range: { from: 0, to: 2 },
+            });
+            session.end();
+          }
+        }
+        touchContent(merged);
+        const after = [...doc.layers];
+        after.splice(index - 1, 2, merged);
+        if (this.host.execute(new ReplaceLayersCommand(label, after, merged.id))) return true;
+      } catch (error) {
+        if (!isAllocationError(error)) {
+          merged.dispose();
+          throw error;
+        }
+        this.host.notify('memory.refused');
+      } finally {
+        this.host.scratch.trim();
+      }
+      merged.dispose();
+      return false;
+    }
 
     if (
       upper.kind === 'vector' &&
@@ -281,6 +340,22 @@ export class LayerManager {
     }
     children.push(new RemoveLayerCommand(label, upper, targetId));
     return this.host.execute(new TransactionCommand(label, children));
+  }
+
+  private needsBackdrop(lower: Layer, upper: Layer): boolean {
+    return (
+      lower.opacity !== 1 ||
+      lower.blendMode !== 'normal' ||
+      upper.blendMode !== 'normal' ||
+      [lower, upper].some(
+        (l) =>
+          l.kind === 'vector' &&
+          (l.opacity !== 1 ||
+            l.objects.some(
+              (o) => o.type === 'highlight' || o.type === 'spotlight' || o.type === 'magnifier',
+            )),
+      )
+    );
   }
 
   /** Các layer sẽ bị gộp bởi Merge Visible (≥ 2 layer đang hiện). */

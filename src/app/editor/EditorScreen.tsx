@@ -685,7 +685,8 @@ export function EditorScreen({ projectId }: EditorScreenProps) {
 
   useEffect(() => {
     let cancelled = false;
-    void loadProject(projectId).then((value) => {
+    const controller = new AbortController();
+    void loadProject(projectId, { signal: controller.signal }).then((value) => {
       if (!cancelled && value.status === 'blocked') {
         navigate({ name: 'home' }, { replace: true });
         return;
@@ -694,6 +695,7 @@ export function EditorScreen({ projectId }: EditorScreenProps) {
     });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [projectId, attempt]);
 
@@ -716,6 +718,7 @@ export function EditorScreen({ projectId }: EditorScreenProps) {
     );
   }
   switch (current.status) {
+    case 'cancelled':
     case 'blocked':
       return null;
     case 'ready': {

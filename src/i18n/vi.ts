@@ -308,6 +308,8 @@ export const vi = {
     save: 'Lưu ngay',
     copied: 'Đã copy ảnh vào clipboard',
     copyDownloaded: 'Trình duyệt không cho ghi ảnh vào clipboard — đã tải file PNG xuống',
+    pasteInternalFallback:
+      'Không đọc được ảnh clipboard hệ thống — đang dán bản đã copy trong app.',
     exported: 'Đã xuất {file}',
     exportFailed: 'Không xuất được ảnh',
     copiedSelection: 'Đã copy vùng chọn',
@@ -707,6 +709,9 @@ export const vi = {
     'document.tooLarge': 'Ảnh quá lớn so với giới hạn của thiết bị này.',
     'layer.locked': 'Layer đang bị khóa.',
     'layer.hidden': 'Layer đang ẩn — hãy hiện layer trước khi vẽ.',
+    'layer.mergeBackdrop':
+      'Tổ hợp độ mờ, hòa trộn hoặc hiệu ứng này cần nền bên dưới — hãy dùng Gộp các layer hiện để giữ đúng ảnh.',
+    'layer.limit': 'Project đã đạt giới hạn 200 layer — hãy gộp hoặc xóa layer trước khi thêm.',
     'layer.notRaster': 'Không vẽ pixel được trên layer chú thích.',
     'layer.noRasterBelow': 'Không có layer ảnh nào bên dưới để dùng.',
     'fill.failed': 'Không tô được vùng này.',

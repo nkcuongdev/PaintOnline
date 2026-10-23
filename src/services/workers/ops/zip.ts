@@ -1,5 +1,6 @@
 import { Unzip, UnzipInflate, zipSync, type Zippable } from 'fflate';
 import { ZipError } from './zipError';
+import { MAX_PAINT_BYTES, MAX_PAINT_ENTRIES } from '@/services/io/paintLimits';
 
 /**
  * Nén/giải nén ZIP cho file `.paint` (mục 6.5) — hàm thuần chạy trong Worker (có unit test).
@@ -15,7 +16,7 @@ export interface ZipEntry {
 }
 
 export interface UnzipLimits {
-  /** Số mục tối đa trong file (≤ 200 — mục 10.2). */
+  /** Finite entry limit, including manifest and thumbnail. */
   maxEntries: number;
   /** Tổng dung lượng sau giải nén (≤ 1 GB). */
   maxTotalBytes: number;
@@ -26,8 +27,8 @@ export interface UnzipLimits {
 export { ZipError, type ZipErrorCode } from './zipError';
 
 export const DEFAULT_UNZIP_LIMITS: Omit<UnzipLimits, 'accept'> = {
-  maxEntries: 200,
-  maxTotalBytes: 1024 * 1024 * 1024,
+  maxEntries: MAX_PAINT_ENTRIES,
+  maxTotalBytes: MAX_PAINT_BYTES,
 };
 
 /** Đường dẫn an toàn: tương đối, không `..`, không ký tự ổ đĩa hay gạch ngược. */

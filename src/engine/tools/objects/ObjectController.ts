@@ -1,4 +1,5 @@
 import type { Document } from '../../core/Document';
+import { MAX_DOCUMENT_LAYERS } from '../../core/limits';
 import type {
   AnnotationObject,
   Color,
@@ -258,6 +259,10 @@ export class ObjectController {
     if (above?.kind === 'vector' && above.visible && !above.locked) {
       doc.activeLayerId = above.id;
       return { layer: above, create: null };
+    }
+    if (doc.layers.length >= MAX_DOCUMENT_LAYERS) {
+      this.host.notify('layer.limit');
+      return null;
     }
     const n = doc.layers.filter((l) => l.kind === 'vector').length + 1;
     const layer = new VectorLayer({ name: this.host.layerName('vector', n) });

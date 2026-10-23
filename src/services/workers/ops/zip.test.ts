@@ -51,7 +51,18 @@ describe('zip/unzip .paint (mục 6.5, 10.2)', () => {
     },
   );
 
-  it('giới hạn số mục (≤ 200)', () => {
+  it('A11: accepts exactly 200 layer entries plus manifest/thumbnail, rejects one more entry', () => {
+    const files: Record<string, Uint8Array> = {
+      'manifest.json': text('{}'),
+      'thumbnail.png': text('png'),
+    };
+    for (let i = 0; i < 200; i++) files[`layers/${i}.png`] = text('png');
+    expect(unzipLimited(zipSync(files), acceptAll).size).toBe(202);
+    files['extra.txt'] = text('x');
+    expect(codeOf(() => unzipLimited(zipSync(files), acceptAll))).toBe('tooManyEntries');
+  });
+
+  it('giới hạn số mục (≤ 202)', () => {
     const files: Record<string, Uint8Array> = {};
     for (let i = 0; i < 205; i++) files[`f${String(i)}.txt`] = text('x');
     expect(codeOf(() => unzipLimited(zipSync(files), acceptAll))).toBe('tooManyEntries');

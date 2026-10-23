@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readDimensions, sniffFormat } from './imageHeader';
+import { readDimensions, readJpegOrientation, sniffFormat } from './imageHeader';
 
 const bytes = (...parts: (number[] | string)[]) =>
   new Uint8Array(
@@ -10,6 +10,35 @@ const be32 = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255
 const le16 = (n: number) => [n & 255, (n >>> 8) & 255];
 const le24 = (n: number) => [n & 255, (n >>> 8) & 255, (n >>> 16) & 255];
 const le32 = (n: number) => [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
+
+it('A09: EXIF orientation parses both TIFF byte orders; truncated/malformed metadata never guesses axes or reads out of bounds', () => {
+  for (const little of [true, false])
+    for (const orientation of [1, 3, 6, 8]) {
+      const u16 = (n: number) => (little ? le16(n) : [n >>> 8, n & 255]);
+      const u32 = (n: number) => (little ? le32(n) : be32(n));
+      const jpeg = bytes(
+        [255, 216, 255, 225, 0, 34],
+        'Exif\0\0',
+        little ? 'II' : 'MM',
+        u16(42),
+        u32(8),
+        u16(1),
+        u16(0x112),
+        u16(3),
+        u32(1),
+        u16(orientation),
+        [0, 0],
+        u32(0),
+        [255, 218],
+      );
+      expect(readJpegOrientation(jpeg)).toBe(orientation);
+      for (let end = 0; end < 38; end++) expect(readJpegOrientation(jpeg.slice(0, end))).toBeNull();
+      const broken = jpeg.slice();
+      broken.set([255, 255, 255, 255], 16);
+      expect(readJpegOrientation(broken)).toBeNull();
+    }
+  expect(readJpegOrientation(bytes([255, 216, 255, 218]))).toBe(1);
+});
 
 const png = (w: number, h: number) =>
   bytes(

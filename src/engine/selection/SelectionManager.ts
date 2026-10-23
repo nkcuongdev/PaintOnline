@@ -1,4 +1,5 @@
 import type { Document } from '../core/Document';
+import { MAX_DOCUMENT_LAYERS } from '../core/limits';
 import type {
   ColorsState,
   MaskData,
@@ -485,6 +486,10 @@ export class SelectionManager {
 
   private commitAsLayer(doc: Document, f: FloatingSelection): boolean {
     if (f.target.kind !== 'new-layer') return false;
+    if (doc.layers.length >= MAX_DOCUMENT_LAYERS) {
+      this.host.notify('layer.limit');
+      return false;
+    }
     const after = doc.getLayer(f.target.afterLayerId);
     const index = after ? doc.indexOfLayer(after.id) + 1 : doc.layers.length;
     const n = doc.layers.filter((l) => l.kind === 'raster').length + 1;

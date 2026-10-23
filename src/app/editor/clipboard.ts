@@ -15,7 +15,7 @@ import { setProjectPalette, type OpenProject } from './session';
  *
  * Trình duyệt không cho biết clipboard hệ thống có bị ứng dụng khác ghi đè không. Dữ liệu nội bộ
  * được coi là còn mới nếu cửa sổ chưa mất focus kể từ lúc copy (không thể copy ở nơi khác mà không
- * rời cửa sổ); nếu đã rời, ảnh dán vào có cùng kích thước với bản nội bộ thì vẫn dán đúng vị trí cũ.
+ * rời cửa sổ). Sau khi rời cửa sổ, luôn dùng nội dung ảnh do hệ thống cung cấp.
  */
 
 interface InternalClip {
@@ -97,11 +97,7 @@ function pasteInternal(project: OpenProject, clip: InternalClip): boolean {
 }
 
 /** Dán ảnh (Blob) thành pixel nổi — layer mới khi commit (mục 2, 7.4). */
-async function pasteBlob(
-  project: OpenProject,
-  blob: Blob,
-  clip: InternalClip | null,
-): Promise<boolean> {
+async function pasteBlob(project: OpenProject, blob: Blob): Promise<boolean> {
   let decoded;
   try {
     decoded = await decode(blob);
@@ -113,15 +109,6 @@ async function pasteBlob(
     return false;
   }
   try {
-    // Cùng kích thước với bản copy nội bộ: chính là ảnh đó (đã qua clipboard hệ thống) — giữ vị trí.
-    if (
-      clip &&
-      !decoded.scaled &&
-      clip.rect.width === decoded.width &&
-      clip.rect.height === decoded.height
-    ) {
-      return pasteInternal(project, clip);
-    }
     if (decoded.scaled) {
       toast(
         'info',
@@ -146,12 +133,12 @@ export async function pasteFromEvent(
   const file = imageFileFrom(data);
   const clip = internal;
   const fresh = clip !== null && clip.copiedAt > lastBlur;
-  if (clip && (fresh || !file)) return pasteInternal(project, clip);
+  if (clip && fresh) return pasteInternal(project, clip);
   if (!file) {
     notifyNoImageInClipboard();
     return false;
   }
-  return pasteBlob(project, file, clip);
+  return pasteBlob(project, file);
 }
 
 /** "Dán" từ menu: clipboard nội bộ còn mới, hoặc đọc clipboard hệ thống bằng Clipboard API. */
@@ -162,18 +149,21 @@ export async function pasteFromMenu(project: OpenProject): Promise<boolean> {
     if (typeof navigator.clipboard.read === 'function') {
       for (const item of await navigator.clipboard.read()) {
         const type = item.types.find((mime) => mime.startsWith('image/'));
-        if (type) return await pasteBlob(project, await item.getType(type), clip);
+        if (type) return await pasteBlob(project, await item.getType(type));
       }
     }
   } catch {
     // Không có quyền đọc clipboard: dùng bản nội bộ nếu có.
   }
-  if (clip) return pasteInternal(project, clip);
+  if (clip) {
+    toast('info', t.actions.pasteInternalFallback);
+    return pasteInternal(project, clip);
+  }
   notifyNoImageInClipboard();
   return false;
 }
 
 /** Thả file ảnh vào editor: layer mới đặt giữa khung nhìn, đang nổi để di chuyển ngay (mục 7.4). */
 export function dropImage(project: OpenProject, file: Blob): Promise<boolean> {
-  return pasteBlob(project, file, null);
+  return pasteBlob(project, file);
 }

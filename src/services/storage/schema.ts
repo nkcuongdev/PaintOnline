@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { MAX_DOCUMENT_LAYERS } from '@/engine/core/limits';
 import {
   BLEND_MODES,
   type AnnotationObject,
@@ -165,7 +166,7 @@ export interface SessionRecord {
 // ---------------------------------------------------------------------------
 
 const MAX_SIDE = 16384;
-const MAX_LAYERS = 200;
+const MAX_LAYERS = MAX_DOCUMENT_LAYERS;
 const MAX_OBJECTS = 5000;
 const MAX_POINTS = 10_000;
 const MAX_TEXT = 20_000;

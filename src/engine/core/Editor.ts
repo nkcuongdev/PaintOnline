@@ -1,4 +1,5 @@
 import { History } from '../history/History';
+import { MAX_DOCUMENT_LAYERS } from './limits';
 import {
   AddLayerCommand,
   RasterizeLayerCommand,
@@ -703,6 +704,10 @@ export class Editor {
    * thước vượt giới hạn thiết bị hoặc không đủ bộ nhớ — thao tác bị từ chối an toàn (mục 5.11).
    */
   createDocument(spec: DocumentSpec, options: CreateDocumentOptions = {}): boolean {
+    if (spec.layers.length > MAX_DOCUMENT_LAYERS) {
+      this.notify('layer.limit');
+      return false;
+    }
     if (!this.memory.allowsDocument(spec.width, spec.height)) {
       this.notify('document.tooLarge');
       return false;
@@ -1505,6 +1510,10 @@ export class Editor {
       return below;
     }
     if (choice === 'new-layer') {
+      if (doc.layers.length >= MAX_DOCUMENT_LAYERS) {
+        this.notify('layer.limit');
+        return null;
+      }
       const n = doc.layers.filter((l) => l.kind === 'raster').length + 1;
       let layer: RasterLayer;
       try {

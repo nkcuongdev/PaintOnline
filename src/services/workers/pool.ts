@@ -27,7 +27,8 @@ function selectionOps(): Promise<typeof SelectionOps> {
 interface Slot {
   worker: Worker;
   api: Remote<ImageWorkerApi>;
-  busy: boolean;
+  active: Job | null;
+  onError: EventListener;
 }
 
 interface Job {
@@ -35,6 +36,8 @@ interface Job {
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
   signal?: AbortSignal;
+  onAbort?: () => void;
+  settled: boolean;
 }
 
 /** Số Worker: số nhân − 1, trong khoảng 2–4 (mục 5.8). */
@@ -56,6 +59,7 @@ export class WorkerPool implements WorkerClient, ImageCodec {
   private readonly queue: Job[] = [];
   /** Worker không có OffscreenCanvas (WebKit cũ): mã hóa chạy trên main thread (mục 11.4). */
   private workerCanvas = true;
+  private disposed = false;
 
   constructor(
     private readonly size = poolSize(
@@ -107,7 +111,9 @@ export class WorkerPool implements WorkerClient, ImageCodec {
     return this.withCanvas(
       (api) => api.alphaBounds(transfer(bitmap, [bitmap])),
       async () => (await selectionOps()).bitmapAlphaBounds(bitmap),
-    );
+    ).finally(() => {
+      bitmap.close();
+    });
   }
 
   /**
@@ -115,35 +121,46 @@ export class WorkerPool implements WorkerClient, ImageCodec {
    * việc đọc pixel sẽ chặn UI, nên khi không có thì từ chối (history giữ nguyên dạng GPU).
    */
   async compressPixels(bitmap: ImageBitmap): Promise<Uint8Array> {
-    if (this.workerCanvas && !(await this.probeWorkerCanvas())) this.workerCanvas = false;
-    if (!this.workerCanvas) {
+    try {
+      this.checkActive();
+      if (this.workerCanvas && !(await this.probeWorkerCanvas())) this.workerCanvas = false;
+      this.checkActive();
+      if (!this.workerCanvas) {
+        throw new Error('Worker không có OffscreenCanvas');
+      }
+      return await (this.enqueue((api) =>
+        api.compressPixels(transfer(bitmap, [bitmap])),
+      ) as Promise<Uint8Array>);
+    } finally {
       bitmap.close();
-      throw new Error('Worker không có OffscreenCanvas');
     }
-    return this.enqueue((api) =>
-      api.compressPixels(transfer(bitmap, [bitmap])),
-    ) as Promise<Uint8Array>;
   }
 
   encode(bitmap: ImageBitmap, options: EncodeOptions): Promise<Blob> {
     return this.withCanvas(
       (api) => api.encode(transfer(bitmap, [bitmap]), options),
       async () => (await mainThread()).encode(bitmap, options),
-    );
+    ).finally(() => {
+      bitmap.close();
+    });
   }
 
   thumbnail(bitmap: ImageBitmap, maxSide: number): Promise<Blob> {
     return this.withCanvas(
       (api) => api.thumbnail(transfer(bitmap, [bitmap]), maxSide),
       async () => (await mainThread()).thumbnail(bitmap, maxSide),
-    );
+    ).finally(() => {
+      bitmap.close();
+    });
   }
 
   palette(bitmap: ImageBitmap): Promise<Color[]> {
     return this.withCanvas(
       (api) => api.palette(transfer(bitmap, [bitmap])),
       async () => (await mainThread()).palette(bitmap),
-    );
+    ).finally(() => {
+      bitmap.close();
+    });
   }
 
   decode(blob: Blob, options: DecodeOptions, signal?: AbortSignal): Promise<ImageBitmap> {
@@ -154,7 +171,9 @@ export class WorkerPool implements WorkerClient, ImageCodec {
     return this.withCanvas(
       (api) => api.encodeLayer(transfer(bitmap, [bitmap])),
       async () => (await mainThread()).encodeLayer(bitmap),
-    );
+    ).finally(() => {
+      bitmap.close();
+    });
   }
 
   decodeLayer(png: ArrayBuffer, signal?: AbortSignal): Promise<ImageData> {
@@ -170,7 +189,9 @@ export class WorkerPool implements WorkerClient, ImageCodec {
     return this.withCanvas(
       (api) => api.encodeWebp(transfer(bitmap, [bitmap]), quality),
       async () => (await mainThread()).encodeWebp(bitmap, quality),
-    );
+    ).finally(() => {
+      bitmap.close();
+    });
   }
 
   zip(entries: ZipEntry[]): Promise<Uint8Array> {
@@ -200,12 +221,18 @@ export class WorkerPool implements WorkerClient, ImageCodec {
     run: (api: Remote<ImageWorkerApi>) => Promise<T>,
     fallback: () => Promise<T>,
   ): Promise<T> {
+    this.checkActive();
     if (this.workerCanvas && !(await this.probeWorkerCanvas())) this.workerCanvas = false;
+    this.checkActive();
     if (!this.workerCanvas) return fallback();
     return this.enqueue(run) as Promise<T>;
   }
 
   private canvasProbe: Promise<boolean> | null = null;
+
+  private checkActive(): void {
+    if (this.disposed) throw abortError();
+  }
 
   private probeWorkerCanvas(): Promise<boolean> {
     this.canvasProbe ??= (this.enqueue((api) => api.hasCanvas()) as Promise<boolean>).catch(
@@ -216,36 +243,46 @@ export class WorkerPool implements WorkerClient, ImageCodec {
 
   /** Dừng mọi Worker (đóng app, test). */
   dispose(): void {
-    for (const job of this.queue.splice(0)) job.reject(abortError());
-    for (const slot of this.slots.splice(0)) {
-      slot.api[releaseProxy]();
-      slot.worker.terminate();
+    this.disposed = true;
+    for (const job of this.queue.splice(0)) this.settle(job, false, abortError());
+    for (const slot of [...this.slots]) {
+      if (slot.active) this.settle(slot.active, false, abortError());
+      this.destroy(slot);
     }
   }
 
   private enqueue(run: Job['run'], signal?: AbortSignal): Promise<unknown> {
-    if (signal?.aborted) return Promise.reject(abortError());
+    if (this.disposed || signal?.aborted) return Promise.reject(abortError());
     return new Promise((resolve, reject) => {
-      const job: Job = { run, resolve, reject, signal };
-      signal?.addEventListener(
-        'abort',
-        () => {
-          const index = this.queue.indexOf(job);
-          if (index >= 0) {
-            this.queue.splice(index, 1);
-            reject(abortError());
-          }
-        },
-        { once: true },
-      );
+      const job: Job = { run, resolve, reject, signal, settled: false };
+      job.onAbort = () => {
+        const index = this.queue.indexOf(job);
+        if (index >= 0) this.queue.splice(index, 1);
+        const slot = this.slots.find((s) => s.active === job);
+        this.settle(job, false, abortError());
+        if (slot) this.destroy(slot);
+        // One navigation can abort many layer decodes. Drain all abort listeners
+        // before replacing slots, so queued jobs in the same batch never spawn.
+        queueMicrotask(() => {
+          this.pump();
+        });
+      };
+      signal?.addEventListener('abort', job.onAbort, { once: true });
       this.queue.push(job);
       this.pump();
     });
   }
 
   private pump(): void {
-    while (this.queue.length > 0) {
-      const slot = this.freeSlot();
+    while (!this.disposed && this.queue.length > 0) {
+      let slot: Slot | null;
+      try {
+        slot = this.freeSlot();
+      } catch (error) {
+        const job = this.queue.shift();
+        if (job) this.settle(job, false, error);
+        continue;
+      }
       if (!slot) return;
       const job = this.queue.shift();
       if (job) this.start(slot, job);
@@ -253,49 +290,72 @@ export class WorkerPool implements WorkerClient, ImageCodec {
   }
 
   private freeSlot(): Slot | null {
-    const free = this.slots.find((s) => !s.busy);
+    const free = this.slots.find((s) => !s.active);
     if (free) return free;
     if (this.slots.length >= this.size) return null;
     const worker = this.spawn();
-    const slot: Slot = { worker, api: wrap<ImageWorkerApi>(worker), busy: false };
+    const slot: Slot = {
+      worker,
+      api: wrap<ImageWorkerApi>(worker),
+      active: null,
+      onError: (event) => {
+        event.preventDefault();
+        if (slot.active) this.settle(slot.active, false, new Error('Image worker failed'));
+        this.destroy(slot);
+        this.pump();
+      },
+    };
+    worker.addEventListener('error', slot.onError);
+    worker.addEventListener('messageerror', slot.onError);
     this.slots.push(slot);
     return slot;
   }
 
   private start(slot: Slot, job: Job): void {
-    slot.busy = true;
-    let settled = false;
-    const finish = () => {
-      settled = true;
-      slot.busy = false;
+    slot.active = job;
+    const finish = (ok: boolean, value: unknown) => {
+      if (job.settled) return;
+      this.settle(job, ok, value);
+      slot.active = null;
       this.pump();
     };
-    const onAbort = () => {
-      if (settled) return;
-      settled = true;
-      // Dừng Worker đang chạy tác vụ bị hủy và thay bằng Worker mới (tạo lười).
+    // Comlink may also throw synchronously (serialization/postMessage failures).
+    try {
+      job.run(slot.api).then(
+        (value) => {
+          finish(true, value);
+        },
+        (error: unknown) => {
+          finish(false, error);
+        },
+      );
+    } catch (error) {
+      finish(false, error);
+    }
+  }
+
+  private settle(job: Job, ok: boolean, value: unknown): void {
+    if (job.settled) return;
+    job.settled = true;
+    if (job.onAbort) job.signal?.removeEventListener('abort', job.onAbort);
+    if (ok) job.resolve(value);
+    else job.reject(value);
+  }
+
+  private destroy(slot: Slot): void {
+    const index = this.slots.indexOf(slot);
+    if (index < 0) return;
+    this.slots.splice(index, 1);
+    slot.worker.removeEventListener('error', slot.onError);
+    slot.worker.removeEventListener('messageerror', slot.onError);
+    slot.active = null;
+    try {
       slot.api[releaseProxy]();
+    } catch {
+      // A crashed endpoint may no longer accept Comlink's release message.
+    } finally {
       slot.worker.terminate();
-      const index = this.slots.indexOf(slot);
-      if (index >= 0) this.slots.splice(index, 1);
-      job.reject(abortError());
-      this.pump();
-    };
-    job.signal?.addEventListener('abort', onAbort, { once: true });
-    job.run(slot.api).then(
-      (value) => {
-        if (settled) return;
-        job.signal?.removeEventListener('abort', onAbort);
-        finish();
-        job.resolve(value);
-      },
-      (error: unknown) => {
-        if (settled) return;
-        job.signal?.removeEventListener('abort', onAbort);
-        finish();
-        job.reject(error);
-      },
-    );
+    }
   }
 }
 

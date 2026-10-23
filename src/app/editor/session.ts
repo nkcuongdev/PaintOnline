@@ -68,6 +68,15 @@ export interface OpenProject {
 
 let current: OpenProject | null = null;
 let instances = 0;
+/** Only the latest open/create/navigation request may publish its resources. */
+let transition = 0;
+let cancelOpening: (() => void) | null = null;
+function advanceTransition(): number {
+  transition++;
+  cancelOpening?.();
+  cancelOpening = null;
+  return transition;
+}
 /** Project đóng mà chưa lưu được (lỗi/hết dung lượng): giữ trong tab để không mất bài. */
 let retained = false;
 let detach: (() => void) | null = null;
@@ -269,41 +278,70 @@ export interface OpenProjectInit {
 
 /** Tạo editor + document, lưu ngay lần đầu. Trả về id, hoặc null nếu bị từ chối. */
 export async function createProject(init: OpenProjectInit): Promise<string | null> {
+  const generation = advanceTransition();
   await initStorage();
-  if (!(await closeCurrentProject())) {
+  if (generation !== transition) return null;
+  const closed = await closeForTransition({}, generation);
+  if (generation !== transition) return null;
+  if (!closed) {
     toast('error', t.storage.transitionBlocked);
     return null;
   }
-  const editor = await createEditor();
-  if (!createDocumentIn(editor, init.document)) return null;
-  // Ảnh dán từ clipboard mở ở chế độ chú thích: Arrow được chọn sẵn (mục 7.4).
-  if (init.mode === 'screenshot') editor.tools.setActive('arrow');
-  const id = editor.document?.id ?? crypto.randomUUID();
-  const lock = storageReady() ? await acquireProjectLock(id) : null;
-  const project: OpenProject = {
-    instance: ++instances,
-    id,
-    name: init.name,
-    mode: init.mode ?? 'paint',
-    palette: init.palette ?? [],
-    fileLink: null,
-    editor,
-    createdAt: Date.now(),
-    autosave: null,
-    lock,
-    readOnly: false,
+  if (generation !== transition) return null;
+  let editor: Editor | null = null;
+  let lock: ProjectLock | null = null;
+  let published = false;
+  const cleanup = () => {
+    lock?.release();
+    lock = null;
+    editor?.dispose();
+    editor = null;
   };
-  current = project;
-  attach(project, undefined, null);
-  emit();
-  void sessionTracker.begin(id, null, editor.tools.selected);
-  // Lưu ngay để project xuất hiện trong danh sách và còn nguyên khi tải lại trang.
-  void project.autosave?.saveNow().then((saved) => {
-    if (saved && project.palette.length > 0) {
-      void repo.setPalette(id, project.palette).catch(() => undefined);
+  cancelOpening = cleanup;
+  try {
+    editor = await createEditor();
+    if (generation !== transition) return null;
+    if (!createDocumentIn(editor, init.document)) {
+      editor = null;
+      return null;
     }
-  });
-  return id;
+    // Ảnh dán từ clipboard mở ở chế độ chú thích: Arrow được chọn sẵn (mục 7.4).
+    if (init.mode === 'screenshot') editor.tools.setActive('arrow');
+    const id = editor.document?.id ?? crypto.randomUUID();
+    lock = storageReady() ? await acquireProjectLock(id) : null;
+    if (generation !== transition) return null;
+    const project: OpenProject = {
+      instance: ++instances,
+      id,
+      name: init.name,
+      mode: init.mode ?? 'paint',
+      palette: init.palette ?? [],
+      fileLink: null,
+      editor,
+      createdAt: Date.now(),
+      autosave: null,
+      lock,
+      readOnly: false,
+    };
+    current = project;
+    attach(project, undefined, null);
+    published = true;
+    emit();
+    void sessionTracker.begin(id, null, editor.tools.selected);
+    // Lưu ngay để project xuất hiện trong danh sách và còn nguyên khi tải lại trang.
+    void project.autosave?.saveNow().then((saved) => {
+      if (saved && project.palette.length > 0) {
+        void repo.setPalette(id, project.palette).catch(() => undefined);
+      }
+    });
+    return id;
+  } catch (error) {
+    recordError('storage', error);
+    return null;
+  } finally {
+    if (cancelOpening === cleanup) cancelOpening = null;
+    if (!published) cleanup();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -315,13 +353,25 @@ export type LoadResult =
   | { status: 'missing' }
   | { status: 'corrupt'; hasCheckpoint: boolean; checkpointAt: number | null }
   | { status: 'failed' }
+  | { status: 'cancelled' }
   | { status: 'blocked' };
 
-const loading = new Map<ID, Promise<LoadResult>>();
+let loading: { id: ID; generation: number; promise: Promise<LoadResult> } | null = null;
 
 /** Mở project theo id (hash route). Gọi lặp lại trong lúc đang mở trả về cùng promise. */
-export function loadProject(id: ID, options: { lock?: ProjectLock } = {}): Promise<LoadResult> {
+export function loadProject(
+  id: ID,
+  options: { lock?: ProjectLock; signal?: AbortSignal } = {},
+): Promise<LoadResult> {
+  if (options.signal?.aborted) {
+    options.lock?.release();
+    return Promise.resolve({ status: 'cancelled' });
+  }
+  if (loading?.id === id && loading.generation === transition && !options.signal && !options.lock)
+    return loading.promise;
+  const generation = advanceTransition();
   if (current?.id === id) {
+    if (options.lock !== current.lock) options.lock?.release();
     // Mở lại project đang giữ trong tab (đóng mà chưa lưu được): tiếp tục làm việc bình thường.
     if (retained) {
       retained = false;
@@ -329,94 +379,144 @@ export function loadProject(id: ID, options: { lock?: ProjectLock } = {}): Promi
     }
     return Promise.resolve({ status: 'ready', project: current });
   }
-  let pending = loading.get(id);
-  if (!pending) {
-    pending = doLoad(id, options.lock).finally(() => {
-      loading.delete(id);
-    });
-    loading.set(id, pending);
-  }
-  return pending;
+  const onAbort = () => {
+    if (transition === generation) advanceTransition();
+  };
+  options.signal?.addEventListener('abort', onAbort, { once: true });
+  const promise = doLoad(id, options.lock, generation).finally(() => {
+    options.signal?.removeEventListener('abort', onAbort);
+    if (loading?.generation === generation) loading = null;
+  });
+  loading = { id, generation, promise };
+  return promise;
 }
 
-async function doLoad(id: ID, givenLock: ProjectLock | undefined): Promise<LoadResult> {
-  await initStorage();
-  if (!(await closeCurrentProject())) {
-    givenLock?.release();
-    toast('error', t.storage.transitionBlocked);
-    return { status: 'blocked' };
-  }
-  if (!storageReady()) {
-    givenLock?.release();
-    return { status: 'missing' };
-  }
-
-  let loaded: LoadedProject;
-  try {
-    loaded = await repo.loadProject(id);
-  } catch (error) {
-    givenLock?.release();
-    if (error instanceof ProjectNotFoundError) return { status: 'missing' };
-    if (error instanceof CorruptProjectError) {
-      const info = error.hasCheckpoint ? await repo.getCheckpointInfo(id).catch(() => null) : null;
-      return {
-        status: 'corrupt',
-        hasCheckpoint: info !== null,
-        checkpointAt: info?.createdAt ?? null,
-      };
-    }
-    return { status: 'failed' };
-  }
-
-  const lock = givenLock ?? (await acquireProjectLock(id));
-  const { images, failed } = await decodeLayerImages(loaded, codec());
-  const { document: record, meta } = loaded;
-
-  const previous = useProjectStore.getState().previousSession;
-  const session = previous?.projectId === id ? previous : null;
-  const spec = documentSpecFromRecord(record, images, id);
-
-  const editor = await createEditor();
-  const ok = createDocumentIn(editor, spec, session?.viewport ?? record.viewport);
-  if (!ok) {
+async function doLoad(
+  id: ID,
+  givenLock: ProjectLock | undefined,
+  generation: number,
+): Promise<LoadResult> {
+  let lock = givenLock ?? null;
+  let editor: Editor | null = null;
+  let published = false;
+  let offLost: (() => void) | null = null;
+  const abort = new AbortController();
+  const cleanup = () => {
+    abort.abort();
+    offLost?.();
+    offLost = null;
     lock?.release();
-    return { status: 'failed' };
-  }
-  const tool: ToolId | null = session?.activeTool ?? (meta.mode === 'screenshot' ? 'arrow' : null);
-  if (tool) editor.tools.setActive(tool);
-
-  const savedLayers = savedLayerRevs(record, images);
-  const checkpoint = await repo.getCheckpointInfo(id).catch(() => null);
-  const project: OpenProject = {
-    instance: ++instances,
-    id,
-    name: meta.name,
-    mode: meta.mode,
-    palette: meta.palette ?? [],
-    fileLink: meta.fileLink ?? null,
-    editor,
-    createdAt: meta.createdAt,
-    autosave: null,
-    lock,
-    readOnly: lock === null,
+    lock = null;
+    editor?.dispose();
+    editor = null;
   };
-  current = project;
-  attach(
-    project,
-    { rev: record.rev, layers: savedLayers, thumbnailRev: loaded.thumbnailRev },
-    checkpoint?.createdAt ?? null,
-  );
-  emit();
+  cancelOpening = cleanup;
+  const stale = () => generation !== transition;
+  try {
+    await initStorage();
+    if (stale()) return { status: 'cancelled' };
+    const closed = await closeForTransition({}, generation);
+    if (stale()) return { status: 'cancelled' };
+    if (!closed) {
+      toast('error', t.storage.transitionBlocked);
+      return { status: 'blocked' };
+    }
+    if (stale()) return { status: 'cancelled' };
+    if (!storageReady()) {
+      return { status: 'missing' };
+    }
 
-  void repo.touchOpened(id).catch(() => undefined);
-  void sessionTracker.begin(id, editor.view, editor.tools.selected);
-  if (session && !session.cleanExit) {
-    toast('info', format(t.storage.recovered, { time: formatTime(meta.updatedAt) }));
+    let loaded: LoadedProject;
+    try {
+      loaded = await repo.loadProject(id);
+    } catch (error) {
+      if (stale()) return { status: 'cancelled' };
+      if (error instanceof ProjectNotFoundError) return { status: 'missing' };
+      if (error instanceof CorruptProjectError) {
+        const info = error.hasCheckpoint
+          ? await repo.getCheckpointInfo(id).catch(() => null)
+          : null;
+        if (stale()) return { status: 'cancelled' };
+        return {
+          status: 'corrupt',
+          hasCheckpoint: info !== null,
+          checkpointAt: info?.createdAt ?? null,
+        };
+      }
+      return { status: 'failed' };
+    }
+
+    if (stale()) return { status: 'cancelled' };
+    lock = givenLock ?? (await acquireProjectLock(id));
+    if (stale()) return { status: 'cancelled' };
+    // Observe ownership while decode/checkpoint is pending, before attach installs
+    // the published project's listener. A stolen opening must publish read-only.
+    if (lock)
+      offLost = lock.onLost(() => {
+        lock = null;
+      });
+    const { images, failed } = await decodeLayerImages(loaded, codec(), undefined, abort.signal);
+    if (stale()) return { status: 'cancelled' };
+    const { document: record, meta } = loaded;
+
+    const previous = useProjectStore.getState().previousSession;
+    const session = previous?.projectId === id ? previous : null;
+    const spec = documentSpecFromRecord(record, images, id);
+
+    editor = await createEditor();
+    if (stale()) return { status: 'cancelled' };
+    const ok = createDocumentIn(editor, spec, session?.viewport ?? record.viewport);
+    if (!ok) {
+      editor = null;
+      return { status: 'failed' };
+    }
+    const tool: ToolId | null =
+      session?.activeTool ?? (meta.mode === 'screenshot' ? 'arrow' : null);
+    if (tool) editor.tools.setActive(tool);
+
+    const savedLayers = savedLayerRevs(record, images);
+    const checkpoint = await repo.getCheckpointInfo(id).catch(() => null);
+    if (stale()) return { status: 'cancelled' };
+    const project: OpenProject = {
+      instance: ++instances,
+      id,
+      name: meta.name,
+      mode: meta.mode,
+      palette: meta.palette ?? [],
+      fileLink: meta.fileLink ?? null,
+      editor,
+      createdAt: meta.createdAt,
+      autosave: null,
+      lock,
+      readOnly: lock === null,
+    };
+    offLost?.();
+    offLost = null;
+    current = project;
+    attach(
+      project,
+      { rev: record.rev, layers: savedLayers, thumbnailRev: loaded.thumbnailRev },
+      checkpoint?.createdAt ?? null,
+    );
+    published = true;
+    emit();
+
+    void repo.touchOpened(id).catch(() => undefined);
+    void sessionTracker.begin(id, editor.view, editor.tools.selected);
+    if (session && !session.cleanExit) {
+      toast('info', format(t.storage.recovered, { time: formatTime(meta.updatedAt) }));
+    }
+    if (session) useProjectStore.setState({ previousSession: null });
+    if (failed > 0) toast('error', format(t.storage.layersUnreadable, { n: failed }));
+    if (project.readOnly) toast('info', t.storage.openedReadOnly);
+    return { status: 'ready', project };
+  } catch (error) {
+    recordError('storage', error);
+    return { status: stale() ? 'cancelled' : 'failed' };
+  } finally {
+    if (cancelOpening === cleanup) cancelOpening = null;
+    if (!published) cleanup();
   }
-  if (session) useProjectStore.setState({ previousSession: null });
-  if (failed > 0) toast('error', format(t.storage.layersUnreadable, { n: failed }));
-  if (project.readOnly) toast('info', t.storage.openedReadOnly);
-  return { status: 'ready', project };
 }
 
 export function formatTime(epoch: number): string {
@@ -439,17 +539,29 @@ let closing: Promise<boolean> | null = null;
 export async function closeCurrentProject(
   options: { discardUnsaved?: boolean } = {},
 ): Promise<boolean> {
+  const generation = advanceTransition();
+  return closeForTransition(options, generation);
+}
+
+async function closeForTransition(
+  options: { discardUnsaved?: boolean },
+  generation: number,
+): Promise<boolean> {
   // Chờ lượt đóng đang chạy (vd. vừa về trang chủ) rồi mới quyết định với tùy chọn của lượt này.
   while (closing) await closing;
+  if (generation !== transition) return true;
   if (!current) return true;
-  const run = doClose(options).finally(() => {
+  const run = doClose(options, generation).finally(() => {
     closing = null;
   });
   closing = run;
   return run;
 }
 
-async function doClose(options: { discardUnsaved?: boolean }): Promise<boolean> {
+async function doClose(
+  options: { discardUnsaved?: boolean },
+  generation: number,
+): Promise<boolean> {
   const project = current;
   if (!project) return true;
   let saved = !hasUnsavedChanges();
@@ -463,6 +575,7 @@ async function doClose(options: { discardUnsaved?: boolean }): Promise<boolean> 
       saved = false;
     }
   }
+  if (generation !== transition) return saved;
   const unsaved = !saved;
   if (unsaved && !options.discardUnsaved) {
     retained = true;
@@ -603,15 +716,26 @@ export async function takeOverEditing(): Promise<void> {
     return;
   }
   useProjectStore.setState({ takingOver: true });
+  const generation = transition;
   broadcast({ type: 'takeover-request', projectId: project.id, from: TAB_ID });
   const lock = await acquireProjectLock(project.id, { waitMs: 5000 });
+  if (current !== project || transition !== generation) {
+    lock?.release();
+    return;
+  }
   if (!lock) {
     useProjectStore.setState({ takingOver: false });
     toast('error', t.storage.takeoverFailed);
     return;
   }
   // Bản trong tab này đã cũ (tab kia vừa lưu xong): bỏ và mở lại từ DB với khóa vừa lấy.
-  await closeCurrentProject({ discardUnsaved: true });
+  const close = closeCurrentProject({ discardUnsaved: true });
+  const closingGeneration = transition;
+  await close;
+  if (transition !== closingGeneration) {
+    lock.release();
+    return;
+  }
   const result = await loadProject(project.id, { lock });
   if (result.status !== 'ready') {
     useProjectStore.setState({ takingOver: false });

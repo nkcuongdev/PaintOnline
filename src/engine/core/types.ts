@@ -717,7 +717,9 @@ export type NoticeCode =
   /** Thao tác chỉnh sửa bị chặn khi bảng điều chỉnh đang mở. */
   | 'filter.open'
   | 'output.pending'
-  | 'layer.redactionProtected';
+  | 'layer.redactionProtected'
+  | 'layer.mergeBackdrop'
+  | 'layer.limit';
 
 /** Bản sao vùng chọn cho UI (thanh trạng thái, menu — mục 7.2). */
 export interface SelectionSummary {

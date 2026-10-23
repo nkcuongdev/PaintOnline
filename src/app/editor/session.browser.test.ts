@@ -30,6 +30,205 @@ const init = {
     layers: [{ kind: 'raster' as const, name: 'Test' }],
   },
 };
+
+async function savedPair() {
+  const a = await start();
+  await closeCurrentProject();
+  const b = await start();
+  await closeCurrentProject();
+  return { a, b };
+}
+
+it('A06: late A cannot replace published B or leave its lock/Editor behind', async () => {
+  const { a, b } = await savedPair();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const load = repo.loadProject.bind(repo);
+  vi.spyOn(repo, 'loadProject').mockImplementation(async (id) => {
+    if (id === a.id) await gate;
+    return load(id);
+  });
+  const old = loadProject(a.id);
+  await Promise.resolve();
+  expect((await loadProject(b.id)).status).toBe('ready');
+  const live = getCurrentProject()!;
+  release();
+  expect((await old).status).toBe('cancelled');
+  expect(getCurrentProject()).toBe(live);
+  expect(live.editor.document).not.toBeNull();
+  expect(await closeCurrentProject()).toBe(true);
+  expect(live.editor.memory.usedBytes).toBe(0);
+  expect((await loadProject(b.id)).status).toBe('ready');
+  expect(getCurrentProject()!.readOnly).toBe(false);
+  const aLock = await acquireProjectLock(a.id);
+  expect(aLock).not.toBeNull();
+  aLock?.release();
+});
+
+it('A06: Back while awaiting checkpoint disposes the unpublished Editor and releases the lock', async () => {
+  const p = await start();
+  await closeCurrentProject();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const checkpoint = vi.spyOn(repo, 'getCheckpointInfo').mockImplementation(async () => {
+    await gate;
+    return null;
+  });
+  const opening = loadProject(p.id);
+  await expect.poll(() => checkpoint.mock.calls.length).toBe(1);
+  await closeCurrentProject();
+  release();
+  expect((await opening).status).toBe('cancelled');
+  expect(getCurrentProject()).toBeNull();
+  const lock = await acquireProjectLock(p.id);
+  expect(lock).not.toBeNull();
+  lock?.release();
+});
+
+it('A06: A→B→A does not reuse an obsolete A request; duplicate current loads share the same promise', async () => {
+  const { a, b } = await savedPair();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const load = repo.loadProject.bind(repo);
+  let first = true;
+  const loading = vi.spyOn(repo, 'loadProject').mockImplementation(async (id) => {
+    if (id === a.id && first) {
+      first = false;
+      await gate;
+    }
+    return load(id);
+  });
+  const oldA = loadProject(a.id);
+  await expect.poll(() => loading.mock.calls.length).toBe(1);
+  expect((await loadProject(b.id)).status).toBe('ready');
+  const oldB = getCurrentProject()!;
+  const newA = loadProject(a.id);
+  expect(loadProject(a.id)).toBe(newA);
+  expect((await newA).status).toBe('ready');
+  release();
+  expect((await oldA).status).toBe('cancelled');
+  expect(getCurrentProject()!.id).toBe(a.id);
+  expect(getCurrentProject()!.readOnly).toBe(false);
+  expect(oldB.editor.memory.usedBytes).toBe(0);
+});
+
+it('A06: load failure after acquiring a supplied lock cleans up Editor and lock; next load succeeds', async () => {
+  const p = await start();
+  await closeCurrentProject();
+  const { Editor } = await import('@/engine/core/Editor');
+  const dispose = vi.spyOn(Editor.prototype, 'dispose');
+  const fail = vi.spyOn(Editor.prototype, 'createDocument').mockImplementationOnce(() => {
+    throw new Error('injected construction failure');
+  });
+  const lock = await acquireProjectLock(p.id);
+  expect(lock).not.toBeNull();
+  expect((await loadProject(p.id, { lock: lock! })).status).toBe('failed');
+  expect(dispose).toHaveBeenCalledOnce();
+  expect(getCurrentProject()).toBeNull();
+  fail.mockRestore();
+  expect((await loadProject(p.id)).status).toBe('ready');
+  expect(getCurrentProject()!.readOnly).toBe(false);
+});
+
+it('A06: aborted UI load releases its supplied lock and never publishes', async () => {
+  const p = await start();
+  await closeCurrentProject();
+  const controller = new AbortController();
+  const lock = await acquireProjectLock(p.id);
+  const release = vi.spyOn(lock!, 'release');
+  const opening = loadProject(p.id, { lock: lock!, signal: controller.signal });
+  controller.abort();
+  expect((await opening).status).toBe('cancelled');
+  expect(release).toHaveBeenCalledOnce();
+  expect(getCurrentProject()).toBeNull();
+  expect((await loadProject(p.id)).status).toBe('ready');
+  expect(getCurrentProject()!.readOnly).toBe(false);
+});
+
+it('A06: superseding a load after lock/Editor allocation immediately cleans it so reopening the same id stays writable', async () => {
+  const { a, b } = await savedPair();
+  const { Editor } = await import('@/engine/core/Editor');
+  const dispose = vi.spyOn(Editor.prototype, 'dispose');
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const checkpoint = vi.spyOn(repo, 'getCheckpointInfo').mockImplementationOnce(async () => {
+    await gate;
+    return null;
+  });
+  const oldA = loadProject(a.id);
+  await expect.poll(() => checkpoint.mock.calls.length).toBe(1);
+  const openB = loadProject(b.id);
+  expect(dispose).toHaveBeenCalledOnce();
+  expect((await openB).status).toBe('ready');
+  expect((await loadProject(a.id)).status).toBe('ready');
+  expect(getCurrentProject()!.readOnly).toBe(false);
+  release();
+  expect((await oldA).status).toBe('cancelled');
+  expect(getCurrentProject()!.id).toBe(a.id);
+});
+
+it('A06: returning to current A during a slow close for B cancels disposal and keeps A writable', async () => {
+  const { a, b } = await savedPair();
+  await loadProject(a.id);
+  const live = getCurrentProject()!;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const close = live.autosave!.close.bind(live.autosave!);
+  const saving = vi.spyOn(live.autosave!, 'close').mockImplementation(async () => {
+    await gate;
+    return close();
+  });
+  const oldB = loadProject(b.id);
+  await expect.poll(() => saving.mock.calls.length).toBe(1);
+  expect((await loadProject(a.id)).status).toBe('ready');
+  release();
+  expect((await oldB).status).toBe('cancelled');
+  expect(getCurrentProject()).toBe(live);
+  expect(live.editor.document).not.toBeNull();
+  expect(live.lock).not.toBeNull();
+  expect(await saveCurrentProject()).toBe(true);
+});
+
+it('A06: ownership stolen while load awaits checkpoint is published read-only, never as a writable editor', async () => {
+  const p = await start();
+  await closeCurrentProject();
+  const lock = await acquireProjectLock(p.id);
+  const lost = vi.fn();
+  const off = lock!.onLost(lost);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const checkpoint = vi.spyOn(repo, 'getCheckpointInfo').mockImplementationOnce(async () => {
+    await gate;
+    return null;
+  });
+  const opening = loadProject(p.id, { lock: lock! });
+  await expect.poll(() => checkpoint.mock.calls.length).toBe(1);
+  const other = await acquireProjectLock(p.id, { stealOnTimeout: true });
+  try {
+    expect(other).not.toBeNull();
+    await expect.poll(() => lost.mock.calls.length).toBe(1);
+    release();
+    expect((await opening).status).toBe('ready');
+    expect(getCurrentProject()!.readOnly).toBe(true);
+    expect(getCurrentProject()!.lock).toBeNull();
+    expect(await saveCurrentProject()).toBe(false);
+  } finally {
+    off();
+    other?.release();
+  }
+});
 async function start() {
   const id = await createProject(init);
   expect(id).not.toBeNull();

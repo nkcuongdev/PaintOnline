@@ -13,6 +13,7 @@ import {
 import type { ImageCodec, ZipEntry } from '@/services/workers/codec';
 import { ZipError } from '@/services/workers/ops/zip';
 import { readDimensions, sniffFormat } from './imageHeader';
+import { MAX_PAINT_BYTES, MAX_PAINT_ENTRIES } from './paintLimits';
 
 /**
  * File `.paint` (mục 6.5): ZIP mở được bằng mọi công cụ giải nén.
@@ -22,7 +23,7 @@ import { readDimensions, sniffFormat } from './imageHeader';
  *   layers/<id>.png một file cho mỗi layer raster có nội dung
  *   thumbnail.png   ảnh thu nhỏ
  *
- * Nhập coi file là không đáng tin (mục 10.2): ≤ 200 mục, ≤ 1 GB sau giải nén (đếm byte thật),
+ * Nhập coi file là không đáng tin: ≤ 200 layer + manifest/thumbnail, ≤ 1 GB sau giải nén,
  * đường dẫn an toàn, manifest validate bằng valibot (loại trường lạ), mỗi ảnh layer kiểm tra
  * header + giải mã trong Worker có timeout trước khi nhận.
  */
@@ -33,7 +34,7 @@ export const PAINT_EXTENSION = 'paint';
 export const PAINT_MIME = 'application/zip';
 
 /** File .paint tối đa (nén) — cùng trần với tổng dung lượng giải nén. */
-export const MAX_PAINT_FILE_BYTES = 1024 * 1024 * 1024;
+export const MAX_PAINT_FILE_BYTES = MAX_PAINT_BYTES;
 const DECODE_TIMEOUT_MS = 10_000;
 
 const ENTRY_PATTERN = /^(manifest\.json|thumbnail\.png|layers\/[0-9A-Za-z-]{1,64}\.png)$/;
@@ -99,13 +100,28 @@ export async function buildProjectFile(
   codec: ImageCodec,
   options: BuildOptions,
 ): Promise<Blob> {
+  // Reject unsupported documents before any expensive sharing render or ZIP work.
+  try {
+    parseDocumentRecord(bundle.document);
+  } catch (error) {
+    throw new ProjectFileError('invalidManifest', error);
+  }
   // A sharing copy contains only the visible composite. Never carry original layers,
   // vectors, hidden content or the old thumbnail into the archive.
   if (options.bakeRedactions) {
     const { sharingBundle } = await import('./sharingBundle');
     bundle = await sharingBundle(bundle, codec);
   }
-  const layers = bundle.layers;
+  const required = new Set(
+    bundle.document.layers.filter((l) => l.kind === 'raster' && l.bounds).map((l) => l.id),
+  );
+  const layers = bundle.layers.filter((l) => required.has(l.layerId));
+  if (
+    new Set(layers.map((l) => l.layerId)).size !== layers.length ||
+    layers.length !== required.size
+  ) {
+    throw new ProjectFileError('invalidLayer');
+  }
   const manifest: PaintManifest = {
     format: PAINT_FORMAT,
     formatVersion: PAINT_FORMAT_VERSION,
@@ -131,7 +147,14 @@ export async function buildProjectFile(
   }
   const thumbnail = bundle.thumbnail ? await thumbnailPng(bundle.thumbnail, codec) : null;
   if (thumbnail) entries.push({ path: 'thumbnail.png', data: thumbnail, level: 0 });
+  if (
+    entries.length > MAX_PAINT_ENTRIES ||
+    entries.reduce((n, e) => n + e.data.byteLength, 0) > MAX_PAINT_BYTES
+  ) {
+    throw new ProjectFileError('tooLarge');
+  }
   const zipped = await codec.zip(entries);
+  if (zipped.byteLength > MAX_PAINT_BYTES) throw new ProjectFileError('tooLarge');
   return new Blob([zipped as Uint8Array<ArrayBuffer>], { type: PAINT_MIME });
 }
 

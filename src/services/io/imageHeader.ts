@@ -136,3 +136,47 @@ function jpegSize(b: Uint8Array): ImageSize | null {
   }
   return null;
 }
+
+/** EXIF IFD0 orientation. null means a truncated/invalid header: do not guess resize axes. */
+export function readJpegOrientation(bytes: Uint8Array): number | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let i = 2;
+  while (i + 1 < bytes.length) {
+    if (bytes[i] !== 0xff) return null;
+    const marker = bytes[i + 1];
+    if (marker === 0xff) {
+      i++;
+      continue;
+    }
+    if (marker === 0xda || marker === 0xd9) return 1;
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
+      i += 2;
+      continue;
+    }
+    if (i + 4 > bytes.length) return null;
+    const length = view.getUint16(i + 2);
+    const end = i + 2 + length;
+    if (length < 2 || end > bytes.length) return null;
+    if (marker === 0xe1 && ascii(bytes, i + 4, 6) === 'Exif\0\0') {
+      const base = i + 10;
+      if (base + 8 > end) return null;
+      const order = ascii(bytes, base, 2);
+      if (order !== 'II' && order !== 'MM') return null;
+      const le = order === 'II';
+      if (view.getUint16(base + 2, le) !== 42) return null;
+      const ifd = base + view.getUint32(base + 4, le);
+      if (ifd < base + 8 || ifd + 2 > end) return null;
+      const count = view.getUint16(ifd, le);
+      if (ifd + 2 + count * 12 > end) return null;
+      for (let j = 0; j < count; j++) {
+        const entry = ifd + 2 + j * 12;
+        if (view.getUint16(entry, le) !== 0x0112) continue;
+        if (view.getUint16(entry + 2, le) !== 3 || view.getUint32(entry + 4, le) !== 1) return null;
+        const value = view.getUint16(entry + 8, le);
+        return value >= 1 && value <= 8 ? value : null;
+      }
+    }
+    i = end;
+  }
+  return null;
+}

@@ -22,12 +22,13 @@ export async function decodeLayerImages(
   loaded: Pick<LoadedProject, 'document' | 'blobs'>,
   codec: Pick<ImageCodec, 'decodeLayer'>,
   timeoutMs = LAYER_DECODE_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<DecodedLayers> {
   const images = new Map<ID, ImageData>();
   let failed = 0;
   await Promise.all(
     loaded.document.layers.map(async (layer) => {
-      if (layer.kind !== 'raster' || !layer.bounds) return;
+      if (signal?.aborted || layer.kind !== 'raster' || !layer.bounds) return;
       const record = loaded.blobs.get(layer.id);
       const bounds = layer.bounds;
       if (record?.contentRev !== layer.contentRev) {
@@ -35,6 +36,10 @@ export async function decodeLayerImages(
         return;
       }
       const controller = new AbortController();
+      const onAbort = () => {
+        controller.abort();
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
       const timer = setTimeout(() => {
         controller.abort();
       }, timeoutMs);
@@ -49,6 +54,7 @@ export async function decodeLayerImages(
         failed++;
       } finally {
         clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
       }
     }),
   );

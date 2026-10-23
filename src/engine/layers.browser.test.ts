@@ -197,31 +197,27 @@ describe('Panel Layers: thêm, nhân bản, xóa, đổi thứ tự, thuộc tí
 });
 
 describe('Merge Down, Merge Visible, Flatten, Rasterize', () => {
-  it('Merge Down: vẽ layer trên vào layer dưới với opacity/blend, ảnh không đổi; undo khôi phục đúng từng pixel', () => {
+  it('Merge Down: backdrop-dependent blend above unrelated layers is refused without changing pixels or history', () => {
     const editor = threeLayerEditor();
     const doc = editor.document;
     const top = doc?.layers[2];
     const middle = doc?.layers[1];
     if (!doc || !top || !middle) throw new Error('thiếu layer');
     editor.layers.setProps(top.id, { opacity: 0.6, blendMode: 'multiply' });
-    // Layer dưới đục hoàn toàn trong vùng nét (nền trắng phía dưới) để multiply cho cùng kết quả.
     const before = editor.readPixels();
     const beforeHash = hashPixels(before);
-    expect(editor.layers.mergeDown(top.id)).toBe(true);
-    expect(editor.document?.layers).toHaveLength(2);
-    expect(activeId(editor)).toBe(middle.id);
-    expect(editor.historySummary().undoLabel).toBe('history.mergeDown');
-    // Layer dưới có pixel bán trong suốt nên multiply có thể khác chút ít ở mép — ảnh phải gần giống.
-    expect(compareImages(editor.readPixels(), before).mean).toBeLessThan(2);
-    editor.undo();
-    expect(editor.document?.layers.map((l) => l.id)).toEqual(doc.layers.map((l) => l.id));
+    const history = editor.historySummary();
+    const emitted = notices(editor);
+    expect(editor.layers.canMergeDown(top.id)).toBe(true);
+    expect(editor.layers.mergeDown(top.id)).toBe(false);
+    expect(emitted).toEqual(['layer.mergeBackdrop']);
+    expect(editor.document?.layers).toHaveLength(3);
+    expect(editor.historySummary()).toEqual(history);
     expect(editor.document?.getLayer(top.id)).toMatchObject({
       opacity: 0.6,
       blendMode: 'multiply',
     });
     expect(hashPixels(editor.readPixels())).toBe(beforeHash);
-    editor.redo();
-    expect(editor.document?.layers).toHaveLength(2);
   });
 
   it('Merge Down normal lên layer đục cho đúng ảnh ghép', () => {

@@ -444,7 +444,10 @@ export class FilterRunner {
       this.inFlight = false;
     }
     // Phiên đã đóng/mở lại hoặc đang áp dụng trong lúc chờ Worker: bỏ kết quả.
-    if (!this.isCurrent(generation)) return;
+    if (!this.isCurrent(generation)) {
+      if (this.hasPending()) this.schedulePreview();
+      return;
+    }
     if (pixels) this.showPreview(layer, plan, pixels, clip, requestedAt);
     // Tham số đã đổi trong lúc Worker chạy: dựng bản mới nhất.
     if (this.hasPending()) this.schedulePreview();

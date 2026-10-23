@@ -1,6 +1,7 @@
 import {
   IMAGE_MIME,
   readDimensions,
+  readJpegOrientation,
   sniffFormat,
   type ImageFormat,
   type ImageSize,
@@ -115,7 +116,12 @@ export async function decodeImage(
   const format = sniffFormat(head);
   if (!format) throw new ImportError('unsupported');
 
-  const declared = readDimensions(head, format);
+  const rawSize = readDimensions(head, format);
+  const orientation = format === 'jpeg' ? readJpegOrientation(head) : 1;
+  const declared =
+    rawSize && orientation !== null && orientation >= 5
+      ? { width: rawSize.height, height: rawSize.width }
+      : rawSize;
   if (declared && (declared.width > MAX_IMAGE_SIDE || declared.height > MAX_IMAGE_SIDE)) {
     throw new ImportError('dimensionsTooLarge');
   }
@@ -125,7 +131,7 @@ export async function decodeImage(
     // Gắn MIME đúng theo magic bytes; xoay theo EXIF (ảnh chụp điện thoại — mục 10.1).
     const typed =
       blob.type === IMAGE_MIME[format] ? blob : new Blob([blob], { type: IMAGE_MIME[format] });
-    const target = declared ? fitWithin(declared, limits) : null;
+    const target = declared && orientation !== null ? fitWithin(declared, limits) : null;
     if (decoder) {
       try {
         return await decoder.decode(
